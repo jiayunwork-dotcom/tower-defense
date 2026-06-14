@@ -82,6 +82,13 @@ export default function App() {
         store.addChatMessage(data);
       });
 
+      socket.on('kicked', (data: any) => {
+        console.log('Kicked from room:', data);
+        store.setKickedMessage(data.message || '你已被房主踢出房间');
+        store.setRoom(null);
+        store.setGame(null);
+      });
+
       socket.on('skip-wave-vote', (data: any) => {
         store.updateGame({ skipWaveVote: data.votes });
       });

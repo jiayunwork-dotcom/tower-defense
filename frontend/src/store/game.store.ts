@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { createContext, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { Game, Room, TowerType, TargetStrategy, SkillType } from '../types/game.types';
+import type { Game, Room, TowerType, TargetStrategy, SkillType, ChatMessage } from '../types/game.types';
 
 class GameSocket {
   private socket: Socket | null = null;
@@ -106,7 +106,8 @@ export interface GameStoreState {
   playerId: string;
   selectedTowerType: TowerType | null;
   selectedTowerId: string | null;
-  chatMessages: { playerId: string; playerName: string; message: string; timestamp: number }[];
+  chatMessages: ChatMessage[];
+  kickedMessage: string | null;
 }
 
 export interface GameStoreActions {
@@ -115,7 +116,8 @@ export interface GameStoreActions {
   setPlayerId: (id: string) => void;
   setSelectedTowerType: (type: TowerType | null) => void;
   setSelectedTowerId: (id: string | null) => void;
-  addChatMessage: (msg: { playerId: string; playerName: string; message: string; timestamp: number }) => void;
+  addChatMessage: (msg: ChatMessage) => void;
+  setKickedMessage: (msg: string | null) => void;
   updateGame: (patch: Partial<Game>) => void;
   updateRoom: (patch: Partial<Room>) => void;
 }
@@ -128,7 +130,8 @@ const initialState: GameStoreState = {
   playerId: '',
   selectedTowerType: null,
   selectedTowerId: null,
-  chatMessages: []
+  chatMessages: [],
+  kickedMessage: null
 };
 
 export function createGameStore(): GameStore {
@@ -154,8 +157,12 @@ export function createGameStore(): GameStore {
     setState('selectedTowerId', id);
   };
 
-  const addChatMessage = (msg: { playerId: string; playerName: string; message: string; timestamp: number }) => {
+  const addChatMessage = (msg: ChatMessage) => {
     setState('chatMessages', (prev) => [...prev, msg].slice(-50));
+  };
+
+  const setKickedMessage = (msg: string | null) => {
+    setState('kickedMessage', msg);
   };
 
   const updateGame = (patch: Partial<Game>) => {
@@ -173,12 +180,14 @@ export function createGameStore(): GameStore {
     get selectedTowerType() { return state.selectedTowerType; },
     get selectedTowerId() { return state.selectedTowerId; },
     get chatMessages() { return state.chatMessages; },
+    get kickedMessage() { return state.kickedMessage; },
     setRoom,
     setGame,
     setPlayerId,
     setSelectedTowerType,
     setSelectedTowerId,
     addChatMessage,
+    setKickedMessage,
     updateGame,
     updateRoom,
     _state: state

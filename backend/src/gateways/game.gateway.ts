@@ -494,4 +494,33 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     return { success: true };
   }
+
+  @SubscribeMessage('kick-player')
+  handleKickPlayer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { playerId: string }
+  ) {
+    const roomId = client.data.roomId;
+    if (!roomId) return { success: false, error: 'Not in a room' };
+
+    const room = this.roomService.kickPlayer(roomId, client.id, data.playerId);
+    if (!room) return { success: false, error: 'Cannot kick player' };
+
+    this.server.to(roomId).emit('player-left', {
+      playerId: data.playerId,
+      players: room.players
+    });
+
+    this.server.to(data.playerId).emit('kicked', {
+      message: '你已被房主踢出房间'
+    });
+
+    const targetClient = this.server.sockets.sockets.get(data.playerId);
+    if (targetClient) {
+      targetClient.leave(roomId);
+      targetClient.data.roomId = null;
+    }
+
+    return { success: true, room };
+  }
 }

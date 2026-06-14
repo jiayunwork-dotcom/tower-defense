@@ -73,6 +73,11 @@ export default function LobbyScreen() {
 
   onMount(() => {
     refreshRooms();
+    if (store.kickedMessage) {
+      setTimeout(() => {
+        store.setKickedMessage(null);
+      }, 5000);
+    }
   });
 
   return (
@@ -86,8 +91,14 @@ export default function LobbyScreen() {
         {isLoading() && <span class="text-warning text-sm">加载中...</span>}
       </div>
 
+      {store.kickedMessage && (
+        <div class="lobby-error w-full max-w-md">
+          🚫 {store.kickedMessage}
+        </div>
+      )}
+
       {errorMsg() && (
-        <div class="lobby-error">
+        <div class="lobby-error w-full max-w-md">
           ⚠️ {errorMsg()}
         </div>
       )}

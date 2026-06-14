@@ -175,4 +175,17 @@ export class RoomService {
     }
     return null;
   }
+
+  kickPlayer(roomId: string, hostId: string, targetPlayerId: string): Room | null {
+    const room = this.rooms.get(roomId);
+    if (!room) return null;
+    if (room.hostId !== hostId) return null;
+    if (room.hostId === targetPlayerId) return null;
+
+    const playerIndex = room.players.findIndex(p => p.id === targetPlayerId);
+    if (playerIndex === -1) return null;
+
+    room.players.splice(playerIndex, 1);
+    return room;
+  }
 }
