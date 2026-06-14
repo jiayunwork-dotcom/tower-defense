@@ -1,7 +1,7 @@
-import { createSignal, onMount, onCleanup, createEffect } from 'solid-js';
+import { createSignal, onMount, createEffect } from 'solid-js';
 import { useGameContext, gameSocket } from '../store/game.store';
 import { SKILLS } from '../constants/game.constants';
-import type { SkillType, ChatMessage } from '../types/game.types';
+import type { SkillType } from '../types/game.types';
 
 const MAP_LIST = [
   { id: 'easy', name: '简单模式', difficulty: '简单' },
@@ -137,18 +137,13 @@ export default function RoomScreen() {
         store.updateRoom({ players: data.players });
       }
     };
-    const onChatMessage = (data: ChatMessage) => {
-      store.addChatMessage(data);
-    };
 
     gameSocket.on('player-joined', onPlayerJoined);
     gameSocket.on('player-left', onPlayerLeft);
-    gameSocket.on('chat-message', onChatMessage);
 
     const cleanup = () => {
       gameSocket.off('player-joined', onPlayerJoined);
       gameSocket.off('player-left', onPlayerLeft);
-      gameSocket.off('chat-message', onChatMessage);
     };
     
     return cleanup;
