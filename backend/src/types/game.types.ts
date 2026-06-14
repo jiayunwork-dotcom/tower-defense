@@ -345,6 +345,35 @@ export interface ReplayMetadata {
 export interface ReplayData {
   metadata: ReplayMetadata;
   events: ReplayEvent[];
+  markers: ReplayMarker[];
+}
+
+export interface ReplayMarker {
+  id: string;
+  timestamp: number;
+  note: string;
+  createdAt: number;
+  side?: 'left' | 'right';
+}
+
+export interface ReplayPlayerStats {
+  playerId: string;
+  playerName: string;
+  kills: number;
+  towersBuilt: number;
+  goldSpent: number;
+  skillsUsed: number;
+}
+
+export interface ReplayGlobalStats {
+  aliveMonsters: number;
+  totalKills: number;
+  livesLost: number;
+}
+
+export interface ReplayStats {
+  players: ReplayPlayerStats[];
+  global: ReplayGlobalStats;
 }
 
 export interface ReplaySummary {
@@ -355,4 +384,5 @@ export interface ReplaySummary {
   playerCount: number;
   finalWave: number;
   victory: boolean;
+  markers?: ReplayMarker[];
 }

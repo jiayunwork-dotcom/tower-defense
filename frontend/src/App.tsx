@@ -1,10 +1,11 @@
-import { onMount, onCleanup } from 'solid-js';
+import { onMount, onCleanup, Show } from 'solid-js';
 import { GameContext, createGameStore, gameSocket } from './store/game.store';
 import type { GameStore } from './store/game.store';
 import LobbyScreen from './components/LobbyScreen';
 import GameScreen from './components/GameScreen';
 import RoomScreen from './components/RoomScreen';
 import ReplayScreen from './components/ReplayScreen';
+import CompareScreen from './components/CompareScreen';
 
 export default function App() {
   const store: GameStore = createGameStore();
@@ -112,6 +113,10 @@ export default function App() {
   });
 
   const currentScreen = () => {
+    if (store.isInCompareMode) {
+      return <CompareScreen />;
+    }
+    
     if (store.isInReplayMode) {
       return <ReplayScreen />;
     }
@@ -132,6 +137,11 @@ export default function App() {
     <GameContext.Provider value={store}>
       <div class="app-container">
         {currentScreen()}
+        <Show when={store.toastMessage}>
+          <div class="toast">
+            {store.toastMessage}
+          </div>
+        </Show>
       </div>
     </GameContext.Provider>
   );

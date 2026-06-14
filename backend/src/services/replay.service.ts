@@ -32,12 +32,15 @@ import {
   EliteAbility,
   BossSkill,
   ImmuneType,
+  ReplayMarker,
 } from '../types/game.types';
+import { randomUUID } from 'crypto';
 
 const REPLAY_KEY_PREFIX = 'replay:';
 const REPLAY_LIST_KEY = 'replay:list';
 const REPLAY_TTL_SECONDS = 24 * 60 * 60;
 const MAX_REPLAY_LIST_SIZE = 50;
+const MAX_MARKERS_PER_REPLAY = 20;
 
 interface ActiveRecording {
   gameId: string;
@@ -98,6 +101,7 @@ export class ReplayService {
     const replayData: ReplayData = {
       metadata,
       events: recording.events,
+      markers: [],
     };
 
     this.memoryReplays.set(gameId, replayData);
@@ -558,5 +562,41 @@ export class ReplayService {
 
   isRecording(gameId: string): boolean {
     return this.activeRecordings.has(gameId);
+  }
+
+  async addMarker(
+    gameId: string,
+    timestamp: number,
+    note: string,
+    side?: 'left' | 'right'
+  ): Promise<ReplayMarker | null> {
+    const replay = await this.getReplay(gameId);
+    if (!replay) return null;
+
+    if (replay.markers.length >= MAX_MARKERS_PER_REPLAY) {
+      return null;
+    }
+
+    const marker: ReplayMarker = {
+      id: randomUUID(),
+      timestamp,
+      note: note.slice(0, 30),
+      createdAt: Date.now(),
+      side,
+    };
+
+    replay.markers.push(marker);
+    this.memoryReplays.set(gameId, replay);
+
+    this.saveReplay(replay).catch((err) => {
+      console.warn(`[ReplayService] Failed to persist marker for ${gameId}:`, err.message);
+    });
+
+    return marker;
+  }
+
+  async getMarkers(gameId: string): Promise<ReplayMarker[]> {
+    const replay = await this.getReplay(gameId);
+    return replay?.markers || [];
   }
 }

@@ -558,4 +558,52 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { success: false, error: err.message };
     }
   }
+
+  @SubscribeMessage('add-marker')
+  async handleAddMarker(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { gameId: string; timestamp: number; note: string; side?: 'left' | 'right' }
+  ) {
+    try {
+      if (!data.gameId || data.timestamp == null) {
+        return { success: false, error: 'gameId and timestamp are required' };
+      }
+
+      const marker = await this.replayService.addMarker(
+        data.gameId,
+        data.timestamp,
+        data.note || '',
+        data.side
+      );
+
+      if (!marker) {
+        return { success: false, error: 'Failed to add marker (max 20 markers per replay)' };
+      }
+
+      const roomId = client.data.roomId;
+      if (roomId) {
+        this.server.to(roomId).emit('marker-added', { gameId: data.gameId, marker });
+      }
+
+      return { success: true, marker };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  @SubscribeMessage('get-markers')
+  async handleGetMarkers(
+    @MessageBody() data: { gameId: string }
+  ) {
+    try {
+      if (!data.gameId) {
+        return { success: false, error: 'gameId is required' };
+      }
+
+      const markers = await this.replayService.getMarkers(data.gameId);
+      return { success: true, markers };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
 }

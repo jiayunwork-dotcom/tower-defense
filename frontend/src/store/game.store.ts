@@ -111,6 +111,11 @@ export interface GameStoreState {
   replayList: ReplaySummary[];
   currentReplay: ReplayData | null;
   isInReplayMode: boolean;
+  replayStartTimeMs: number;
+  isInCompareMode: boolean;
+  leftReplay: ReplayData | null;
+  rightReplay: ReplayData | null;
+  toastMessage: string | null;
 }
 
 export interface GameStoreActions {
@@ -126,6 +131,12 @@ export interface GameStoreActions {
   setReplayList: (list: ReplaySummary[]) => void;
   setCurrentReplay: (replay: ReplayData | null) => void;
   setIsInReplayMode: (value: boolean) => void;
+  setReplayStartTimeMs: (ms: number) => void;
+  setIsInCompareMode: (value: boolean) => void;
+  setLeftReplay: (replay: ReplayData | null) => void;
+  setRightReplay: (replay: ReplayData | null) => void;
+  showToast: (msg: string) => void;
+  clearToast: () => void;
 }
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -140,8 +151,15 @@ const initialState: GameStoreState = {
   kickedMessage: null,
   replayList: [],
   currentReplay: null,
-  isInReplayMode: false
+  isInReplayMode: false,
+  replayStartTimeMs: 0,
+  isInCompareMode: false,
+  leftReplay: null,
+  rightReplay: null,
+  toastMessage: null,
 };
+
+let toastTimer: number | null = null;
 
 export function createGameStore(): GameStore {
   const [state, setState] = createStore<GameStoreState>(initialState);
@@ -194,6 +212,41 @@ export function createGameStore(): GameStore {
     setState('isInReplayMode', value);
   };
 
+  const setReplayStartTimeMs = (ms: number) => {
+    setState('replayStartTimeMs', ms);
+  };
+
+  const setIsInCompareMode = (value: boolean) => {
+    setState('isInCompareMode', value);
+  };
+
+  const setLeftReplay = (replay: ReplayData | null) => {
+    setState('leftReplay', replay);
+  };
+
+  const setRightReplay = (replay: ReplayData | null) => {
+    setState('rightReplay', replay);
+  };
+
+  const showToast = (msg: string) => {
+    setState('toastMessage', msg);
+    if (toastTimer) {
+      window.clearTimeout(toastTimer);
+    }
+    toastTimer = window.setTimeout(() => {
+      setState('toastMessage', null);
+      toastTimer = null;
+    }, 2000);
+  };
+
+  const clearToast = () => {
+    setState('toastMessage', null);
+    if (toastTimer) {
+      window.clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+  };
+
   return {
     get room() { return state.room; },
     get game() { return state.game; },
@@ -205,6 +258,11 @@ export function createGameStore(): GameStore {
     get replayList() { return state.replayList; },
     get currentReplay() { return state.currentReplay; },
     get isInReplayMode() { return state.isInReplayMode; },
+    get replayStartTimeMs() { return state.replayStartTimeMs; },
+    get isInCompareMode() { return state.isInCompareMode; },
+    get leftReplay() { return state.leftReplay; },
+    get rightReplay() { return state.rightReplay; },
+    get toastMessage() { return state.toastMessage; },
     setRoom,
     setGame,
     setPlayerId,
@@ -217,6 +275,12 @@ export function createGameStore(): GameStore {
     setReplayList,
     setCurrentReplay,
     setIsInReplayMode,
+    setReplayStartTimeMs,
+    setIsInCompareMode,
+    setLeftReplay,
+    setRightReplay,
+    showToast,
+    clearToast,
     _state: state
   } as GameStore;
 }

@@ -1,8 +1,9 @@
-import { onMount, onCleanup, createSignal, createMemo } from 'solid-js';
+import { onMount, onCleanup, createSignal, createMemo, Show, For } from 'solid-js';
 import { useGameContext } from '../store/game.store';
+import { gameSocket } from '../store/game.store';
 import { GameRenderer } from '../utils/game-renderer';
 import { ReplayEngine, ReplayState } from '../utils/replay-engine';
-import type { ReplayData } from '../types/game.types';
+import type { ReplayData, ReplayMarker, ReplayStats } from '../types/game.types';
 
 export default function ReplayScreen() {
   const store = useGameContext();
@@ -18,21 +19,22 @@ export default function ReplayScreen() {
   const [isDragging, setIsDragging] = createSignal(false);
   const [replayState, setReplayState] = createSignal<ReplayState | null>(null);
   const [isLoading, setIsLoading] = createSignal(true);
+  const [markers, setMarkers] = createSignal<ReplayMarker[]>([]);
+  const [statsPanelOpen, setStatsPanelOpen] = createSignal(false);
+  const [showMarkerInput, setShowMarkerInput] = createSignal(false);
+  const [markerNote, setMarkerNote] = createSignal('');
+  const [markerInputTime, setMarkerInputTime] = createSignal(0);
+  const [hoveredMarker, setHoveredMarker] = createSignal<ReplayMarker | null>(null);
 
   let replayEngine: ReplayEngine | null = null;
   let lastFrameTime: number = 0;
   let playbackTimeMs: number = 0;
+  let markerNoteInputRef: HTMLInputElement | null = null;
 
   const formatTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -44,15 +46,37 @@ export default function ReplayScreen() {
       return;
     }
 
+    if (!replayData.markers) {
+      (replayData as any).markers = [];
+    }
+
     replayEngine = new ReplayEngine(replayData);
     const totalDurationMs = replayEngine.getTotalDuration();
     setTotalDuration(totalDurationMs);
-    setCurrentTime(0);
-    playbackTimeMs = 0;
 
-    const initialState = replayEngine.getInitialState();
-    setReplayState(initialState);
-    setIsLoading(false);
+    setMarkers(replayData.markers || []);
+
+    const startTime = store.replayStartTimeMs || 0;
+    store.setReplayStartTimeMs(0);
+
+    if (startTime > 0) {
+      setIsLoading(true);
+      requestAnimationFrame(() => {
+        const initState = replayEngine!.getInitialState();
+        const targetMs = Math.min(startTime, totalDurationMs);
+        const newState = replayEngine!.rebuildStateTo(targetMs);
+        setReplayState(newState);
+        playbackTimeMs = targetMs;
+        setCurrentTime(targetMs);
+        setIsLoading(false);
+      });
+    } else {
+      const initialState = replayEngine.getInitialState();
+      setReplayState(initialState);
+      playbackTimeMs = 0;
+      setCurrentTime(0);
+      setIsLoading(false);
+    }
   };
 
   const play = () => {
@@ -118,6 +142,99 @@ export default function ReplayScreen() {
     store.setCurrentReplay(null);
   };
 
+  const createMarker = async (note: string, timestamp: number) => {
+    const replayData = store.currentReplay as ReplayData;
+    if (!replayData || !replayEngine) return;
+
+    if (markers().length >= 20) {
+      store.showToast('最多只能创建20个标记');
+      return;
+    }
+
+    const result = await gameSocket.emit('add-marker', {
+      gameId: replayData.metadata.gameId,
+      timestamp,
+      note: note.slice(0, 30),
+    });
+
+    if (result && result.success && result.marker) {
+      const newMarkers = [...markers(), result.marker];
+      setMarkers(newMarkers);
+      if (store.currentReplay) {
+        store.currentReplay.markers = newMarkers;
+      }
+      store.showToast('标记创建成功');
+    } else {
+      store.showToast(result?.error || '创建标记失败');
+    }
+  };
+
+  const openMarkerInput = () => {
+    if (markers().length >= 20) {
+      store.showToast('最多只能创建20个标记');
+      return;
+    }
+    setMarkerInputTime(currentTime());
+    setMarkerNote('');
+    setShowMarkerInput(true);
+    setTimeout(() => {
+      if (markerNoteInputRef) {
+        markerNoteInputRef.focus();
+      }
+    }, 50);
+  };
+
+  const confirmMarkerInput = () => {
+    createMarker(markerNote(), markerInputTime());
+    setShowMarkerInput(false);
+  };
+
+  const cancelMarkerInput = () => {
+    setShowMarkerInput(false);
+  };
+
+  const handleMarkerClick = (marker: ReplayMarker) => {
+    seekTo(marker.timestamp);
+  };
+
+  const shareReplay = async () => {
+    const replayData = store.currentReplay as ReplayData;
+    if (!replayData) return;
+
+    const gameId = replayData.metadata.gameId;
+    const timeSeconds = Math.floor(currentTime() / 1000);
+    const shareLink = `replay?id=${encodeURIComponent(gameId)}&t=${timeSeconds}`;
+
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      store.showToast('已复制分享链接');
+    } catch (e) {
+      const textarea = document.createElement('textarea');
+      textarea.value = shareLink;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      store.showToast('已复制分享链接');
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'm' || e.key === 'M') {
+      if (!showMarkerInput()) {
+        pause();
+        openMarkerInput();
+      }
+    } else if (e.key === ' ' && !showMarkerInput()) {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === 'Escape' && showMarkerInput()) {
+      cancelMarkerInput();
+    } else if (e.key === 'Enter' && showMarkerInput()) {
+      confirmMarkerInput();
+    }
+  };
+
   const renderLoop = (timestamp: number) => {
     if (!lastFrameTime) lastFrameTime = timestamp;
     const deltaTime = (timestamp - lastFrameTime) / 1000;
@@ -157,6 +274,7 @@ export default function ReplayScreen() {
       
       updateSize();
       window.addEventListener('resize', updateSize);
+      window.addEventListener('keydown', handleKeyDown);
       
       initReplay();
       lastFrameTime = performance.now();
@@ -168,6 +286,7 @@ export default function ReplayScreen() {
     if (updateSize) {
       window.removeEventListener('resize', updateSize);
     }
+    window.removeEventListener('keydown', handleKeyDown);
     if (animationFrame) {
       cancelAnimationFrame(animationFrame);
     }
@@ -180,6 +299,10 @@ export default function ReplayScreen() {
   const progress = createMemo(() => 
     totalDuration() > 0 ? (currentTime() / totalDuration()) * 100 : 0
   );
+
+  const sortedMarkers = createMemo(() => [...markers()].sort((a, b) => a.timestamp - b.timestamp));
+
+  const currentStats = createMemo<ReplayStats | null>(() => replayState()?.stats || null);
 
   return (
     <div class="replay-screen">
@@ -201,13 +324,26 @@ export default function ReplayScreen() {
             </div>
           )}
         </div>
-        <button class="btn-secondary" onClick={exitReplay}>
-          返回大厅
-        </button>
+        <div class="flex gap-sm items-center">
+          <button class="btn-secondary replay-action-btn" onClick={shareReplay} title="分享精彩时刻">
+            🔗 分享精彩时刻
+          </button>
+          <button class="btn-secondary replay-action-btn" onClick={openMarkerInput} title="按M键快速创建标记">
+            📍 创建标记 (M)
+          </button>
+          <button class="btn-secondary" onClick={exitReplay}>
+            返回大厅
+          </button>
+        </div>
       </div>
 
       <div class="replay-body">
-        <div class="game-canvas-container replay-canvas-container">
+        <div 
+          classList={{
+            'game-canvas-container replay-canvas-container': true,
+            'replay-canvas-with-panel': statsPanelOpen()
+          }}
+        >
           <canvas
             ref={(el) => { canvasRef = el; }}
             class="game-canvas"
@@ -236,7 +372,78 @@ export default function ReplayScreen() {
               </div>
             </div>
           )}
+
+          <button
+            classList={{
+              'stats-panel-toggle': true,
+              'stats-panel-toggle-open': statsPanelOpen()
+            }}
+            onClick={() => setStatsPanelOpen(!statsPanelOpen())}
+            title={statsPanelOpen() ? '收起统计面板' : '展开统计面板'}
+          >
+            {statsPanelOpen() ? '▶' : '◀ 统计'}
+          </button>
         </div>
+
+        <Show when={statsPanelOpen()}>
+          <div class="stats-panel">
+            <div class="stats-panel-header">
+              <h3>📊 实时统计</h3>
+              <span class="text-xs text-muted">
+                截至 {formatTime(currentTime())}
+              </span>
+            </div>
+
+            <Show when={currentStats()}>
+              <div class="stats-section">
+                <h4 class="stats-section-title">全局数据</h4>
+                <div class="stats-global-grid">
+                  <div class="stat-card">
+                    <div class="stat-label">存活怪物</div>
+                    <div class="stat-value text-warning">{currentStats()!.global.aliveMonsters}</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-label">击杀总数</div>
+                    <div class="stat-value text-danger">{currentStats()!.global.totalKills}</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-label">损失生命</div>
+                    <div class="stat-value text-danger">{currentStats()!.global.livesLost}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="stats-section">
+                <h4 class="stats-section-title">玩家数据</h4>
+                <For each={currentStats()!.players}>
+                  {(playerStat) => (
+                    <div class="stats-player-card">
+                      <div class="stats-player-name">{playerStat.playerName}</div>
+                      <div class="stats-player-grid">
+                        <div class="stat-mini">
+                          <span class="stat-mini-label">击杀</span>
+                          <span class="stat-mini-value text-danger">{playerStat.kills}</span>
+                        </div>
+                        <div class="stat-mini">
+                          <span class="stat-mini-label">建塔</span>
+                          <span class="stat-mini-value text-primary">{playerStat.towersBuilt}</span>
+                        </div>
+                        <div class="stat-mini">
+                          <span class="stat-mini-label">花费</span>
+                          <span class="stat-mini-value text-gold">{playerStat.goldSpent}</span>
+                        </div>
+                        <div class="stat-mini">
+                          <span class="stat-mini-label">技能</span>
+                          <span class="stat-mini-value text-success">{playerStat.skillsUsed}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+        </Show>
       </div>
 
       <div class="replay-controls">
@@ -261,6 +468,35 @@ export default function ReplayScreen() {
             class="replay-progress-fill"
             style={{ width: `${progress()}%` }}
           ></div>
+          
+          <For each={sortedMarkers()}>
+            {(marker) => {
+              const markerPercent = totalDuration() > 0 ? (marker.timestamp / totalDuration()) * 100 : 0;
+              return (
+                <div
+                  class="replay-marker"
+                  style={{ left: `calc(${markerPercent}% - 6px)` }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleMarkerClick(marker);
+                  }}
+                  onMouseEnter={() => setHoveredMarker(marker)}
+                  onMouseLeave={() => setHoveredMarker(null)}
+                >
+                  <div class="replay-marker-triangle"></div>
+                  <Show when={hoveredMarker()?.id === marker.id}>
+                    <div class="replay-marker-tooltip">
+                      <div class="replay-marker-tooltip-time">{formatTime(marker.timestamp)}</div>
+                      <Show when={marker.note}>
+                        <div class="replay-marker-tooltip-note">{marker.note}</div>
+                      </Show>
+                    </div>
+                  </Show>
+                </div>
+              );
+            }}
+          </For>
+
           <div 
             class="replay-progress-thumb"
             style={{ left: `calc(${progress()}% - 8px)` }}
@@ -292,6 +528,33 @@ export default function ReplayScreen() {
           </button>
         </div>
       </div>
+
+      <Show when={showMarkerInput()}>
+        <div class="modal-overlay" onClick={cancelMarkerInput}>
+          <div class="modal-dialog marker-input-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 class="modal-title marker-modal-title">📍 创建精彩标记</h3>
+            <div class="marker-input-time">
+              时间点: {formatTime(markerInputTime())}
+            </div>
+            <div class="marker-input-note">
+              <label>备注文字 (可选，最多30字)</label>
+              <input
+                ref={(el) => { markerNoteInputRef = el; }}
+                type="text"
+                maxlength={30}
+                placeholder="输入备注内容..."
+                value={markerNote()}
+                onInput={(e) => setMarkerNote(e.target.value)}
+              />
+              <div class="marker-char-count">{markerNote().length}/30</div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-secondary" onClick={cancelMarkerInput}>取消</button>
+              <button class="btn-primary" onClick={confirmMarkerInput}>确定</button>
+            </div>
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }
