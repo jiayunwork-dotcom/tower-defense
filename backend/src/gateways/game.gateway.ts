@@ -15,6 +15,7 @@ import { TowerType, TargetStrategy, SkillType } from '../types/game.types';
 @WebSocketGateway({
   cors: {
     origin: '*',
+    credentials: true,
   },
   namespace: '/game'
 })

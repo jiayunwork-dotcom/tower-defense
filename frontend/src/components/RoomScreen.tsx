@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup } from 'solid-js';
+import { createSignal, onMount } from 'solid-js';
 import { useGameContext, gameSocket } from '../store/game.store';
 import { SKILLS } from '../constants/game.constants';
 import type { SkillType } from '../types/game.types';
@@ -12,18 +12,23 @@ const MAP_LIST = [
 ];
 
 export default function RoomScreen() {
-  const { state, setRoom, setGame } = useGameContext();
-  const [selectedMap, setSelectedMap] = createSignal(state.room?.selectedMap || 'normal');
+  const store = useGameContext();
+  const [selectedMap, setSelectedMap] = createSignal(store.room?.selectedMap || 'normal');
+  const [errorMsg, setErrorMsg] = createSignal('');
 
-  const player = () => state.room?.players.find(p => p.id === state.playerId);
+  const player = () => store.room?.players.find(p => p.id === store.playerId);
   const isHost = () => player()?.isHost;
-  const allReady = () => state.room?.players.every(p => p.isReady);
+  const allReady = () => store.room?.players.every(p => p.isReady);
+  const playerCount = () => store.room?.players.length || 0;
 
   const toggleReady = async () => {
+    setErrorMsg('');
     const isReady = !player()?.isReady;
     const result = await gameSocket.emit('set-ready', { isReady });
     if (result.success) {
-      setRoom(result.room);
+      store.setRoom(result.room);
+    } else {
+      setErrorMsg(result.error || '操作失败');
     }
   };
 
@@ -32,57 +37,62 @@ export default function RoomScreen() {
     setSelectedMap(mapId);
     const result = await gameSocket.emit('select-map', { mapName: mapId });
     if (result.success) {
-      setRoom(result.room);
+      store.setRoom(result.room);
     }
   };
 
   const selectSkill = async (skill: SkillType) => {
+    setErrorMsg('');
     const result = await gameSocket.emit('select-skill', { skill });
-    if (result.success) {
-      setRoom(result.room);
+    if (!result.success) {
+      setErrorMsg(result.error || '技能已被占用');
     }
   };
 
   const startGame = async () => {
+    setErrorMsg('');
     const result = await gameSocket.emit('start-game');
-    if (result.success) {
-      setGame(result.game);
+    if (!result.success) {
+      setErrorMsg(result.error || '开始游戏失败，请确保所有玩家已准备');
     }
   };
 
   const leaveRoom = async () => {
     await gameSocket.emit('leave-room');
-    setRoom(null);
+    store.setRoom(null);
+    store.setGame(null);
   };
 
   onMount(() => {
     const onPlayerJoined = (data: any) => {
-      const room = state.room;
-      if (room) {
-        setRoom({ ...room, players: data.players });
+      console.log('[Room] Player joined:', data);
+      if (store.room) {
+        store.updateRoom({ players: data.players });
       }
     };
-
     const onPlayerLeft = (data: any) => {
-      const room = state.room;
-      if (room) {
-        setRoom({ ...room, players: data.players });
+      console.log('[Room] Player left:', data);
+      if (store.room) {
+        store.updateRoom({ players: data.players });
       }
     };
 
     gameSocket.on('player-joined', onPlayerJoined);
     gameSocket.on('player-left', onPlayerLeft);
 
-    return () => {
+    const cleanup = () => {
       gameSocket.off('player-joined', onPlayerJoined);
       gameSocket.off('player-left', onPlayerLeft);
     };
+    
+    // SolidJS onMount 返回值自动作为清理函数
+    return cleanup;
   });
 
-  const takenSkills = () => {
+  const takenSkills = (): SkillType[] => {
     const skills: SkillType[] = [];
-    state.room?.players.forEach(p => {
-      if (p.id !== state.playerId) {
+    store.room?.players.forEach(p => {
+      if (p.id !== store.playerId) {
         skills.push(p.skill);
       }
     });
@@ -90,79 +100,88 @@ export default function RoomScreen() {
   };
 
   return (
-    <div class="lobby-screen">
+    <div class="room-screen-wrap">
       <h1 class="lobby-title">游戏房间</h1>
 
-      <div class="card" style="width: 100%; max-width: 800px;">
-        <h2 style="margin-bottom: 20px;">{state.room?.name}</h2>
+      {errorMsg() && (
+        <div class="lobby-error w-full max-w-md">
+          ⚠️ {errorMsg()}
+        </div>
+      )}
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+      <div class="room-card">
+        <h2 class="room-card-title">{store.room?.name}</h2>
+
+        <div class="room-content-grid">
           <div>
-            <h3 style="margin-bottom: 16px;">玩家列表 ({state.room?.players.length}/{state.room?.maxPlayers})</h3>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-              {state.room?.players.map((p, i) => (
-                <div 
-                  class="player-card" 
-                  style={{
-                    borderLeft: `4px solid ${['#3b82f6', '#22c55e', '#f59e0b', '#ef4444'][i % 4]}`
-                  }}
-                >
-                  <div class="player-avatar" style={{ background: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444'][i % 4] }}>
-                    {p.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div class="player-info">
-                    <div class="player-name">
-                      {p.name}
-                      {p.isHost && <span style="color: #fbbf24; margin-left: 8px;">👑</span>}
+            <h3 class="room-section-title">
+              玩家列表 ({playerCount()}/{store.room?.maxPlayers})
+            </h3>
+            <div class="room-player-list">
+              {store.room?.players.map((p, i) => {
+                const colorIdx = i % 4;
+                return (
+                  <div 
+                    class={`room-player-card color-${colorIdx}`}
+                  >
+                    <div class={`room-player-avatar avatar-${colorIdx}`}>
+                      {p.name.charAt(0).toUpperCase()}
                     </div>
-                    <div style="font-size: 11px;">
-                      技能: {SKILLS[p.skill]?.name || '无'}
+                    <div class="room-player-info">
+                      <div class="room-player-name">
+                        {p.name}
+                        {p.isHost && <span class="text-gold ml-sm">👑</span>}
+                      </div>
+                      <div class="room-player-skill">
+                        技能: {SKILLS[p.skill]?.name || '无'}
+                      </div>
+                    </div>
+                    <div class="room-player-status">
+                      {p.isReady ? (
+                        <span class="status-ready">✓ 准备</span>
+                      ) : (
+                        <span class="status-not-ready">未准备</span>
+                      )}
                     </div>
                   </div>
-                  <div style={{ marginLeft: 'auto' }}>
-                    {p.isReady ? (
-                      <span style="color: #22c55e; font-weight: 600;">✓ 准备</span>
-                    ) : (
-                      <span style="color: rgba(255,255,255,0.5);">未准备</span>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           <div>
-            <h3 style="margin-bottom: 16px;">选择地图</h3>
-            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px;">
-              {MAP_LIST.map(map => (
-                <button
-                  class={selectedMap() === map.id ? 'btn-primary' : 'btn-secondary'}
-                  style={{ width: '100%', textAlign: 'left' }}
-                  onclick={() => selectMap(map.id)}
-                  disabled={!isHost()}
-                >
-                  {map.name} - {map.difficulty}
-                </button>
-              ))}
+            <h3 class="room-section-title">选择地图</h3>
+            <div class="room-map-list">
+              {MAP_LIST.map(map => {
+                const isSelected = (store.room?.selectedMap || 'normal') === map.id;
+                const btnClass = isSelected ? 'btn-primary' : 'btn-secondary';
+                return (
+                  <button
+                    class={`${btnClass} room-map-btn`}
+                    onClick={() => selectMap(map.id)}
+                    disabled={!isHost()}
+                  >
+                    {map.name} - {map.difficulty}
+                  </button>
+                );
+              })}
             </div>
 
-            <h3 style="margin-bottom: 16px;">选择技能</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 24px;">
+            <h3 class="room-section-title">选择技能</h3>
+            <div class="room-skill-grid">
               {(Object.keys(SKILLS) as SkillType[]).map(skill => {
                 const isTaken = takenSkills().includes(skill);
                 const isSelected = player()?.skill === skill;
+                const btnBaseClass = isSelected ? 'btn-gold' : 'btn-secondary';
                 return (
                   <button
-                    class={isSelected ? 'btn-gold' : isTaken ? 'btn-secondary' : 'btn-secondary'}
-                    style={{ 
-                      opacity: isTaken ? 0.5 : 1,
-                      cursor: isTaken ? 'not-allowed' : 'pointer'
-                    }}
-                    onclick={() => !isTaken && selectSkill(skill)}
+                    class={`${btnBaseClass} room-skill-btn ${isTaken ? 'disabled' : ''}`}
+                    onClick={() => !isTaken && selectSkill(skill)}
                     disabled={isTaken}
+                    title={`${SKILLS[skill].name}: ${SKILLS[skill].description}`}
                   >
-                    <div style="font-size: 20px;">{SKILLS[skill].icon}</div>
-                    <div style="font-size: 11px;">{SKILLS[skill].name}</div>
+                    <span class="skill-icon">{SKILLS[skill].icon}</span>
+                    <span class="skill-name">{SKILLS[skill].name}</span>
                   </button>
                 );
               })}
@@ -170,13 +189,13 @@ export default function RoomScreen() {
           </div>
         </div>
 
-        <div style="display: flex; gap: 12px; margin-top: 30px; justify-content: center;">
-          <button class="btn-secondary" onclick={leaveRoom}>
+        <div class="room-actions">
+          <button class="btn-secondary" onClick={leaveRoom}>
             离开房间
           </button>
           <button 
-            class={allReady() && isHost() ? 'btn-success' : 'btn-primary'}
-            onclick={isHost() ? startGame : toggleReady}
+            class={`${allReady() && isHost() ? 'btn-success' : 'btn-primary'}`}
+            onClick={() => isHost() ? startGame() : toggleReady()}
             disabled={isHost() ? !allReady() : false}
           >
             {isHost() 

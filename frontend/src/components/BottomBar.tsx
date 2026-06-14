@@ -3,11 +3,11 @@ import { SKILLS, PLAYER_COLORS } from '../constants/game.constants';
 import type { SkillType } from '../types/game.types';
 
 export default function BottomBar() {
-  const { state } = useGameContext();
-  const game = state.game;
+  const store = useGameContext();
+  const game = store.game;
 
   const useSkill = async (skill: SkillType) => {
-    const player = game?.players.find(p => p.id === state.playerId);
+    const player = game?.players.find(p => p.id === store.playerId);
     if (!player || player.skill !== skill || player.skillCooldown > 0) return;
     
     if (skill === 'meteor') {
@@ -19,44 +19,50 @@ export default function BottomBar() {
     }
   };
 
-  const currentPlayer = () => game?.players.find(p => p.id === state.playerId);
+  const currentPlayer = () => game?.players.find(p => p.id === store.playerId);
 
   return (
     <div class="bottom-bar">
       <div class="player-list">
-        {game?.players.map((player, index) => (
-          <div 
-            class="player-card" 
-            style={{
-              borderTop: `3px solid ${PLAYER_COLORS[index % PLAYER_COLORS.length]}`,
-              opacity: player.isConnected ? 1 : 0.5
-            }}
-          >
+        {game?.players.map((player, index) => {
+          const colorIdx = index % PLAYER_COLORS.length;
+          const isOwnSkill = currentPlayer()?.id === player.id;
+          const onCooldown = player.skillCooldown > 0;
+          const cooldownPercent = player.skillCooldown 
+            ? (player.skillCooldown / SKILLS[player.skill].cooldown) * 100 
+            : 0;
+
+          return (
             <div 
-              class="player-avatar" 
-              style={{ background: PLAYER_COLORS[index % PLAYER_COLORS.length] }}
+              class={`player-card game-player-card p-${colorIdx}`}
+              style={{ opacity: player.isConnected ? 1 : 0.5 }}
             >
-              {player.name.charAt(0).toUpperCase()}
+              <div 
+                class="player-avatar"
+                style={{ background: PLAYER_COLORS[colorIdx] }}
+              >
+                {player.name.charAt(0).toUpperCase()}
+              </div>
+              <div class="player-info">
+                <div class="player-name">
+                  {player.name}
+                  {player.isHost && ' 👑'}
+                </div>
+                <div class="player-stats">
+                  击杀: {player.kills} | 技能: {SKILLS[player.skill]?.name}
+                </div>
+              </div>
+              {isOwnSkill && onCooldown && (
+                <div class="text-xs text-warning ml-sm">
+                  {Math.ceil(player.skillCooldown)}s
+                </div>
+              )}
             </div>
-            <div class="player-info">
-              <div class="player-name">
-                {player.name}
-                {player.isHost && ' 👑'}
-              </div>
-              <div class="player-stats">
-                击杀: {player.kills} | 技能: {SKILLS[player.skill]?.name}
-              </div>
-            </div>
-            {player.skillCooldown > 0 && (
-              <div style={{ fontSize: '11px', color: '#f59e0b', marginLeft: '8px' }}>
-                {Math.ceil(player.skillCooldown)}s
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div style="display: flex; gap: 10px;">
+      <div class="flex gap-sm">
         {(Object.keys(SKILLS) as SkillType[]).map(skill => {
           const player = currentPlayer();
           const isOwnSkill = player?.skill === skill;
@@ -67,35 +73,25 @@ export default function BottomBar() {
 
           return (
             <button
-              class={isOwnSkill ? 'btn-gold' : 'btn-secondary'}
-              style={{
-                minWidth: '70px',
-                opacity: isOwnSkill ? 1 : 0.5,
-                position: 'relative',
-                overflow: 'hidden'
+              classList={{
+                'game-skill-btn': true,
+                'btn-secondary': !isOwnSkill,
+                'btn-gold': isOwnSkill,
+                'disabled': !isOwnSkill || onCooldown
               }}
-              onclick={() => isOwnSkill && !onCooldown && useSkill(skill)}
+              onClick={() => isOwnSkill && !onCooldown && useSkill(skill)}
               disabled={!isOwnSkill || onCooldown}
               title={`${SKILLS[skill].name}: ${SKILLS[skill].description}`}
             >
               {isOwnSkill && onCooldown && (
                 <div 
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    width: '100%',
-                    height: `${cooldownPercent}%`,
-                    background: 'rgba(0,0,0,0.4)',
-                    transition: 'height 0.1s linear'
-                  }}
+                  class="skill-cooldown-overlay"
+                  style={{ height: `${cooldownPercent}%` }}
                 />
               )}
-              <div style={{ fontSize: '20px', position: 'relative', zIndex: 1 }}>
-                {SKILLS[skill].icon}
-              </div>
-              <div style={{ fontSize: '10px', position: 'relative', zIndex: 1 }}>
-                {SKILLS[skill].name}
+              <div class="skill-btn-content">
+                <div class="skill-icon">{SKILLS[skill].icon}</div>
+                <div class="skill-name">{SKILLS[skill].name}</div>
               </div>
             </button>
           );

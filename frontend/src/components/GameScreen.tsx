@@ -6,26 +6,26 @@ import BottomBar from './BottomBar';
 import TowerPanel from './TowerPanel';
 import TowerDetail from './TowerDetail';
 import GameOverPanel from './GameOverPanel';
-import type { TowerType, SkillType } from '../types/game.types';
+import type { TowerType } from '../types/game.types';
 
 export default function GameScreen() {
-  const { state, setSelectedTowerType, setSelectedTowerId } = useGameContext();
+  const store = useGameContext();
   let canvasRef: HTMLCanvasElement | null = null;
   let renderer: GameRenderer | null = null;
   let animationFrame: number = 0;
+  let updateSize: () => void;
 
-  const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
   const [chatInput, setChatInput] = createSignal('');
 
   const renderLoop = () => {
-    if (renderer && state.game) {
-      renderer.render(state.game, state.selectedTowerType, state.selectedTowerId);
+    if (renderer && store.game) {
+      renderer.render(store.game, store.selectedTowerType, store.selectedTowerId);
     }
     animationFrame = requestAnimationFrame(renderLoop);
   };
 
   const handleCanvasClick = (e: MouseEvent) => {
-    if (!canvasRef || !renderer || !state.game) return;
+    if (!canvasRef || !renderer || !store.game) return;
 
     const rect = canvasRef.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -34,8 +34,10 @@ export default function GameScreen() {
     const worldPos = renderer.screenToWorld(x, y);
     const gridPos = renderer.worldToGrid(worldPos.x, worldPos.y);
 
-    if (state.selectedTowerType) {
-      buildTower(state.selectedTowerType, gridPos.gridX, gridPos.gridY);
+    console.log('[GameScreen] Click at grid:', gridPos, 'world:', worldPos);
+
+    if (store.selectedTowerType) {
+      buildTower(store.selectedTowerType, gridPos.gridX, gridPos.gridY);
     } else {
       selectTowerAt(gridPos.gridX, gridPos.gridY);
     }
@@ -43,35 +45,30 @@ export default function GameScreen() {
 
   const handleCanvasRightClick = (e: MouseEvent) => {
     e.preventDefault();
-    setSelectedTowerType(null);
-    setSelectedTowerId(null);
+    store.setSelectedTowerType(null);
+    store.setSelectedTowerId(null);
   };
 
   const buildTower = async (type: TowerType, x: number, y: number) => {
+    console.log('[GameScreen] Building tower:', type, 'at', x, y);
     const result = await gameSocket.emit('build-tower', { type, x, y });
-    if (result.success) {
-      // Tower built successfully
+    if (!result.success) {
+      console.warn('[GameScreen] Build tower failed:', result.error);
+    } else {
+      store.setSelectedTowerType(null);
     }
   };
 
   const selectTowerAt = (gridX: number, gridY: number) => {
-    const tower = state.game?.towers.find(t => 
+    const tower = store.game?.towers.find(t => 
       Math.floor(t.x) === gridX && Math.floor(t.y) === gridY
     );
+    console.log('[GameScreen] Selected tower:', tower);
     if (tower) {
-      setSelectedTowerId(tower.id);
+      store.setSelectedTowerId(tower.id);
     } else {
-      setSelectedTowerId(null);
+      store.setSelectedTowerId(null);
     }
-  };
-
-  const handleCanvasMouseMove = (e: MouseEvent) => {
-    if (!canvasRef) return;
-    const rect = canvasRef.getBoundingClientRect();
-    setMousePos({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    });
   };
 
   const sendChat = async () => {
@@ -80,26 +77,13 @@ export default function GameScreen() {
     setChatInput('');
   };
 
-  const useSkill = async (skill: SkillType) => {
-    if (state.game?.players.find(p => p.id === state.playerId)?.skillCooldown !== 0) return;
-    
-    if (skill === 'meteor') {
-      // TODO: 让玩家选择目标位置
-      const centerX = state.game!.map.width / 2;
-      const centerY = state.game!.map.height / 2;
-      await gameSocket.emit('use-skill', { skill, targetX: centerX, targetY: centerY });
-    } else {
-      await gameSocket.emit('use-skill', { skill });
-    }
-  };
-
   const skipWave = async () => {
     await gameSocket.emit('skip-wave');
   };
 
-  const currentPlayer = () => state.game?.players.find(p => p.id === state.playerId);
-
-  let updateSize: () => void;
+  const connectedPlayerCount = () => {
+    return store.game?.players.filter(p => p.isConnected).length || 0;
+  };
 
   onMount(() => {
     if (canvasRef) {
@@ -117,6 +101,8 @@ export default function GameScreen() {
       window.addEventListener('resize', updateSize);
       
       renderLoop();
+    } else {
+      console.error('[GameScreen] canvasRef is null!');
     }
   });
 
@@ -139,36 +125,35 @@ export default function GameScreen() {
       <div class="game-body">
         <div class="game-canvas-container">
           <canvas
-            ref={canvasRef!}
+            ref={(el) => { canvasRef = el; }}
             class="game-canvas"
-            onclick={handleCanvasClick}
-            oncontextmenu={handleCanvasRightClick}
-            onmousemove={handleCanvasMouseMove}
+            onClick={handleCanvasClick}
+            onContextMenu={handleCanvasRightClick}
           />
           
-          {!state.game?.isWaveActive && state.game && state.game.state === 'playing' && (
+          {!store.game?.isWaveActive && store.game && store.game.state === 'playing' && (
             <div class="wave-preview">
-              下一波: 第 {state.game.currentWave + 1} 波 | 
-              倒计时: {Math.ceil(state.game.waveTimer)}秒
+              下一波: 第 {store.game.currentWave + 1} 波 | 
+              倒计时: {Math.ceil(store.game.waveTimer)}秒
               <button 
                 class="btn-gold" 
-                style="margin-left: 12px; padding: 4px 12px; font-size: 12px;"
-                onclick={skipWave}
+                classList={{ 'ml-sm': true, 'py-xs': true, 'px-md': true, 'text-xs': true }}
+                onClick={skipWave}
               >
-                跳过等待 ({state.game.skipWaveVote.length}/{state.game.players.filter(p => p.isConnected).length})
+                跳过等待 ({store.game.skipWaveVote.length}/{connectedPlayerCount()})
               </button>
             </div>
           )}
 
-          {state.selectedTowerId && state.game && (
+          {store.selectedTowerId && store.game && (
             <TowerDetail />
           )}
 
-          {state.chatMessages.length > 0 && (
+          {store.chatMessages.length > 0 && (
             <div class="chat-box">
-              {state.chatMessages.slice(-5).map((msg, i) => (
+              {store.chatMessages.slice(-5).map((msg, i) => (
                 <div class="chat-message" key={i}>
-                  <span style="color: #3b82f6; font-weight: 600;">{msg.playerName}: </span>
+                  <span class="text-primary text-semibold">{msg.playerName}: </span>
                   {msg.message}
                 </div>
               ))}
@@ -182,7 +167,7 @@ export default function GameScreen() {
               value={chatInput()}
               onInput={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-              style={{ width: '100%' }}
+              class="w-full"
             />
           </div>
         </div>
@@ -194,7 +179,7 @@ export default function GameScreen() {
       
       <BottomBar />
       
-      {state.game?.state === 'ended' && <GameOverPanel />}
+      {store.game?.state === 'ended' && <GameOverPanel />}
     </div>
   );
 }

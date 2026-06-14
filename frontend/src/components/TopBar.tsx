@@ -1,13 +1,18 @@
 import { useGameContext } from '../store/game.store';
+import { gameSocket } from '../store/game.store';
 
 export default function TopBar() {
-  const { state } = useGameContext();
-  const game = state.game;
+  const store = useGameContext();
+  const game = store.game;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const voteSpeed = async (speed: number) => {
+    await gameSocket.emit('vote-speed', { speed });
   };
 
   return (
@@ -31,23 +36,30 @@ export default function TopBar() {
           <span>{Math.floor(game?.gold || 0)}</span>
         </div>
 
-        <div class="info-item" style="color: rgba(255,255,255,0.7);">
+        <div class="info-item text-muted">
           <span>⏱️</span>
           <span>{formatTime(game?.elapsedTime || 0)}</span>
         </div>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 13px; color: rgba(255,255,255,0.6);">
+      <div class="flex items-center gap-sm">
+        <span class="text-sm text-muted">
           速度: {game?.gameSpeed || 1}x
         </span>
-        <button 
-          class="btn-secondary" 
-          style="padding: 6px 12px; font-size: 12px;"
-          onclick={() => {}}
-        >
-          ⚙️ 速度
-        </button>
+        <div class="flex gap-xs">
+          <button 
+            class="btn-secondary py-sm px-md text-xs"
+            onClick={() => voteSpeed(1)}
+          >1x</button>
+          <button 
+            class="btn-secondary py-sm px-md text-xs"
+            onClick={() => voteSpeed(1.5)}
+          >1.5x</button>
+          <button 
+            class="btn-secondary py-sm px-md text-xs"
+            onClick={() => voteSpeed(2)}
+          >2x</button>
+        </div>
       </div>
     </div>
   );
