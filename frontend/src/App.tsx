@@ -6,6 +6,8 @@ import GameScreen from './components/GameScreen';
 import RoomScreen from './components/RoomScreen';
 import ReplayScreen from './components/ReplayScreen';
 import CompareScreen from './components/CompareScreen';
+import AchievementNotification from './components/AchievementNotification';
+import AchievementModal from './components/AchievementModal';
 
 export default function App() {
   const store: GameStore = createGameStore();
@@ -102,6 +104,14 @@ export default function App() {
         });
       });
 
+      socket.on('achievement-unlocked', (data: any) => {
+        console.log('Achievement unlocked:', data.achievement);
+        store.addAchievementNotification(data.achievement);
+        if (store.showAchievementModal) {
+          store.fetchAchievements();
+        }
+      });
+
     } catch (err) {
       console.error('Error initializing app:', err);
     }
@@ -142,6 +152,8 @@ export default function App() {
             {store.toastMessage}
           </div>
         </Show>
+        <AchievementNotification />
+        <AchievementModal />
       </div>
     </GameContext.Provider>
   );

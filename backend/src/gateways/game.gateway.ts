@@ -11,7 +11,9 @@ import { Server, Socket } from 'socket.io';
 import { RoomService } from '../services/room.service';
 import { GameEngineService } from '../services/game-engine.service';
 import { ReplayService } from '../services/replay.service';
-import { TowerType, TargetStrategy, SkillType } from '../types/game.types';
+import { AchievementService } from '../services/achievement.service';
+import { LeaderboardService } from '../services/leaderboard.service';
+import { TowerType, TargetStrategy, SkillType, LeaderboardType } from '../types/game.types';
 
 @WebSocketGateway({
   cors: {
@@ -29,7 +31,9 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private roomService: RoomService,
     private gameEngineService: GameEngineService,
-    private replayService: ReplayService
+    private replayService: ReplayService,
+    private achievementService: AchievementService,
+    private leaderboardService: LeaderboardService
   ) {}
 
   handleConnection(client: Socket) {
@@ -209,6 +213,15 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.to(roomId).emit('game-state', {
         game: this.serializeGame(game)
       });
+
+      for (const player of game.players) {
+        const newlyUnlocked = this.gameEngineService.popNewlyUnlockedAchievements(roomId, player.id);
+        if (newlyUnlocked.length > 0) {
+          for (const achievement of newlyUnlocked) {
+            this.server.to(player.id).emit('achievement-unlocked', { achievement });
+          }
+        }
+      }
     }, 1000 / 30);
 
     this.gameTickIntervals.set(roomId, interval);
@@ -602,6 +615,37 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       const markers = await this.replayService.getMarkers(data.gameId);
       return { success: true, markers };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  @SubscribeMessage('get-player-achievements')
+  async handleGetPlayerAchievements(
+    @ConnectedSocket() client: Socket
+  ) {
+    try {
+      const achievements = await this.achievementService.getAllPlayerAchievements(client.id);
+      return { success: true, achievements };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  @SubscribeMessage('get-leaderboard')
+  async handleGetLeaderboard(
+    @MessageBody() data: { type: string; limit?: number }
+  ) {
+    try {
+      if (!data.type) {
+        return { success: false, error: 'type is required' };
+      }
+
+      const entries = await this.leaderboardService.getLeaderboard(
+        data.type as LeaderboardType,
+        data.limit || 20
+      );
+      return { success: true, entries };
     } catch (err: any) {
       return { success: false, error: err.message };
     }

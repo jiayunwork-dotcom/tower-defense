@@ -176,4 +176,80 @@ export class RedisService implements OnModuleInit {
     const result = await this.client!.expire(key, seconds);
     return result === 1;
   }
+
+  async zadd(key: string, score: number, member: string): Promise<number> {
+    if (!this.isEnabled()) {
+      let zset = this.inMemoryStore.get(key);
+      if (!zset) {
+        zset = new Map();
+        this.inMemoryStore.set(key, zset);
+      }
+      zset.set(member, score);
+      return 1;
+    }
+    return this.client!.zadd(key, score, member);
+  }
+
+  async zincrby(key: string, increment: number, member: string): Promise<number> {
+    if (!this.isEnabled()) {
+      let zset = this.inMemoryStore.get(key);
+      if (!zset) {
+        zset = new Map();
+        this.inMemoryStore.set(key, zset);
+      }
+      const current = zset.get(member) || 0;
+      const newValue = current + increment;
+      zset.set(member, newValue);
+      return newValue;
+    }
+    return Number(await this.client!.zincrby(key, increment, member));
+  }
+
+  async zscore(key: string, member: string): Promise<number | null> {
+    if (!this.isEnabled()) {
+      const zset = this.inMemoryStore.get(key);
+      if (!zset) return null;
+      const val = zset.get(member);
+      return val !== undefined ? val : null;
+    }
+    const result = await this.client!.zscore(key, member);
+    return result !== null ? Number(result) : null;
+  }
+
+  async zrevrange(key: string, start: number, stop: number, withScores?: boolean): Promise<string[] | { member: string; score: number }[]> {
+    if (!this.isEnabled()) {
+      const zset = this.inMemoryStore.get(key);
+      if (!zset) return [];
+      const entries = Array.from(zset.entries())
+        .map(([member, score]) => ({ member, score }))
+        .sort((a, b) => b.score - a.score)
+        .slice(start, stop === -1 ? undefined : stop + 1);
+      if (withScores) {
+        return entries;
+      }
+      return entries.map(e => e.member);
+    }
+    if (withScores) {
+      const result = await this.client!.zrevrange(key, start, stop, 'WITHSCORES');
+      const entries: { member: string; score: number }[] = [];
+      for (let i = 0; i < result.length; i += 2) {
+        entries.push({ member: result[i], score: Number(result[i + 1]) });
+      }
+      return entries;
+    }
+    return this.client!.zrevrange(key, start, stop);
+  }
+
+  async zrank(key: string, member: string): Promise<number | null> {
+    if (!this.isEnabled()) {
+      const zset = this.inMemoryStore.get(key);
+      if (!zset) return null;
+      const entries = Array.from(zset.entries())
+        .sort((a, b) => b[1] - a[1]);
+      const index = entries.findIndex(e => e[0] === member);
+      return index === -1 ? null : index;
+    }
+    const result = await this.client!.zrevrank(key, member);
+    return result;
+  }
 }

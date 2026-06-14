@@ -2,13 +2,14 @@ import { createSignal, onMount, createMemo, For, Show } from 'solid-js';
 import { useGameContext } from '../store/game.store';
 import { gameSocket } from '../store/game.store';
 import type { Room, ReplaySummary, ReplayData } from '../types/game.types';
+import LeaderboardPanel from './LeaderboardPanel';
 
 export default function LobbyScreen() {
   const store = useGameContext();
   const [roomName, setRoomName] = createSignal('');
   const [rooms, setRooms] = createSignal<Room[]>([]);
   const [replays, setReplays] = createSignal<ReplaySummary[]>([]);
-  const [activeTab, setActiveTab] = createSignal<'rooms' | 'replays'>('rooms');
+  const [activeTab, setActiveTab] = createSignal<'rooms' | 'replays' | 'leaderboard'>('rooms');
   const [isLoading, setIsLoading] = createSignal(false);
   const [isReplaysLoading, setIsReplaysLoading] = createSignal(false);
   const [errorMsg, setErrorMsg] = createSignal('');
@@ -241,7 +242,15 @@ export default function LobbyScreen() {
 
   return (
     <div class="lobby-screen">
-      <h1 class="lobby-title">🏰 多人塔防</h1>
+      <div class="lobby-header">
+        <h1 class="lobby-title">🏰 多人塔防</h1>
+        <button 
+          class="btn-gold btn-achievement"
+          onClick={() => store.setShowAchievementModal(true)}
+        >
+          🏆 我的成就
+        </button>
+      </div>
       
       <div class="lobby-status-bar">
         <p class="text-sm text-muted">
@@ -328,6 +337,15 @@ export default function LobbyScreen() {
         >
           📹 回放列表
         </button>
+        <button
+          classList={{
+            'lobby-tab': true,
+            'lobby-tab-active': activeTab() === 'leaderboard'
+          }}
+          onClick={() => { setActiveTab('leaderboard'); setErrorMsg(''); }}
+        >
+          🏆 排行榜
+        </button>
       </div>
 
       {activeTab() === 'rooms' ? (
@@ -370,7 +388,7 @@ export default function LobbyScreen() {
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab() === 'replays' ? (
         <div class="w-full max-w-md max-h-lg overflow-y-auto p-sm">
           <div class="flex items-center justify-between mb-md">
             <h3 class="lobby-rooms-header mb-0">最近回放</h3>
@@ -474,6 +492,10 @@ export default function LobbyScreen() {
               </For>
             </div>
           )}
+        </div>
+      ) : (
+        <div class="w-full max-w-md max-h-lg overflow-y-auto p-sm">
+          <LeaderboardPanel />
         </div>
       )}
     </div>

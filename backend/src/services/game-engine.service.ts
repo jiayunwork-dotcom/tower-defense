@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { 
   Game, Tower, Monster, Player, TowerType, TargetStrategy, 
   MonsterType, EliteAbility, BossSkill, ImmuneType, GameMap,
-  GameState, SkillType, Position
+  GameState, SkillType, Position, AchievementDef, PlayerAchievementProgress,
+  PlayerGameSessionStats
 } from '../types/game.types';
 import { 
   TOWER_CONFIG, MONSTER_CONFIG, INITIAL_LIVES, BOSS_LIFE_COST, 
@@ -13,6 +14,9 @@ import {
 } from '../constants/game.constants';
 import { getMapByName } from '../config/maps.config';
 import { ReplayService } from './replay.service';
+import { AchievementService } from './achievement.service';
+import { LeaderboardService } from './leaderboard.service';
+import { ACHIEVEMENT_REDIS_KEY_PREFIX } from '../constants/achievements.constants';
 
 @Injectable()
 export class GameEngineService {
@@ -21,8 +25,14 @@ export class GameEngineService {
   private moveRecordCounters: Map<string, number> = new Map();
   private attackRecordCounters: Map<string, number> = new Map();
   private mapNames: Map<string, string> = new Map();
+  private playerHistoricalProgress: Map<string, Map<string, PlayerAchievementProgress>> = new Map();
+  private gameNewlyUnlocked: Map<string, Map<string, AchievementDef[]>> = new Map();
 
-  constructor(private replayService: ReplayService) {}
+  constructor(
+    private replayService: ReplayService,
+    private achievementService: AchievementService,
+    private leaderboardService: LeaderboardService
+  ) {}
 
   createGame(roomId: string, mapName: string, players: Player[]): Game {
     const map = getMapByName(mapName, CELL_SIZE);
@@ -44,7 +54,11 @@ export class GameEngineService {
         areaBounds: map.playerAreas[i]?.bounds || { x: 0, y: 0, width: 20, height: 30 },
         skillCooldown: 0,
         kills: 0,
-        isConnected: true
+        isConnected: true,
+        sessionStats: {
+          towersBuilt: 0,
+          goldSpent: 0,
+        },
       })),
       towers: [],
       monsters: [],
@@ -73,6 +87,11 @@ export class GameEngineService {
     this.moveRecordCounters.set(roomId, 0);
     this.attackRecordCounters.set(roomId, 0);
     this.replayService.startRecording(game, mapName);
+    
+    this.gameNewlyUnlocked.set(roomId, new Map());
+    const historicalMap = new Map<string, PlayerAchievementProgress>();
+    this.playerHistoricalProgress.set(roomId, historicalMap);
+    
     return game;
   }
 
@@ -482,6 +501,12 @@ export class GameEngineService {
 
     game.monsters.splice(index, 1);
 
+    for (const player of game.players) {
+      player.kills++;
+    }
+
+    this.checkKillAchievements(game);
+
     this.replayService.recordMonsterDeath(game.id, monster.id, goldReward, game.elapsedTime);
     this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
   }
@@ -786,10 +811,16 @@ export class GameEngineService {
   }
 
   private checkGameEnd(game: Game): void {
+    const wasPlaying = game.state === 'playing';
+    
     if (game.lives <= 0) {
       game.state = 'ended';
     } else if (!game.isEndless && game.currentWave >= game.totalWaves && !game.isWaveActive && game.monsters.length === 0) {
       game.state = 'ended';
+    }
+
+    if (wasPlaying && game.state === 'ended') {
+      this.handleGameEnd(game);
     }
 
     if (game.state === 'ended' && this.replayService.isRecording(game.id)) {
@@ -797,6 +828,37 @@ export class GameEngineService {
       const finalWave = game.currentWave;
       this.replayService.recordGameEnd(game.id, victory, finalWave, game.elapsedTime);
       this.replayService.stopRecording(game.id, finalWave, victory);
+    }
+  }
+
+  private async handleGameEnd(game: Game): Promise<void> {
+    const victory = game.lives > 0;
+    const finalWave = game.currentWave;
+
+    for (const player of game.players) {
+      const sessionStats: PlayerGameSessionStats = {
+        kills: player.kills,
+        towersBuilt: player.sessionStats?.towersBuilt || 0,
+        goldSpent: player.sessionStats?.goldSpent || 0,
+        finalWave: finalWave,
+        victory: victory,
+        difficulty: game.difficulty,
+      };
+
+      await this.achievementService.mergeSessionStats(player.id, sessionStats);
+      
+      const newlyUnlocked = await this.achievementService.checkAndUnlockAchievements(player.id, sessionStats);
+      if (newlyUnlocked.length > 0) {
+        const playerUnlocked = this.gameNewlyUnlocked.get(game.id) || new Map();
+        playerUnlocked.set(player.id, newlyUnlocked);
+        this.gameNewlyUnlocked.set(game.id, playerUnlocked);
+      }
+
+      await this.leaderboardService.addKills(player.id, player.name, player.kills);
+      await this.leaderboardService.updateWaveRecord(player.id, player.name, finalWave);
+      if (victory) {
+        await this.leaderboardService.addWin(player.id, player.name);
+      }
     }
   }
 
@@ -829,6 +891,19 @@ export class GameEngineService {
 
     game.gold -= config.baseCost;
     game.towers.push(tower);
+
+    if (player.sessionStats) {
+      player.sessionStats.towersBuilt++;
+      player.sessionStats.goldSpent += config.baseCost;
+    }
+
+    for (const p of game.players) {
+      if (p.sessionStats) {
+        p.sessionStats.goldSpent += config.baseCost;
+      }
+    }
+
+    this.checkBuildAndEconomyAchievements(game, playerId);
 
     this.replayService.recordTowerBuild(game.id, tower, config.baseCost, game.elapsedTime);
     this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
@@ -900,6 +975,13 @@ export class GameEngineService {
     tower.totalCost += upgradeCost;
     tower.level++;
 
+    const towerOwner = game.players.find(p => p.id === tower.playerId);
+    if (towerOwner && towerOwner.sessionStats) {
+      towerOwner.sessionStats.goldSpent += upgradeCost;
+    }
+
+    this.checkEconomyAchievements(game);
+
     const upgradeMultiplier = 1 + (tower.level - 1) * 0.4;
     tower.damage = config.damage * upgradeMultiplier;
     tower.range = config.range * (1 + (tower.level - 1) * 0.1);
@@ -924,6 +1006,13 @@ export class GameEngineService {
     game.gold -= evolveCost;
     tower.totalCost += evolveCost;
     tower.branch = branch;
+
+    const towerOwner = game.players.find(p => p.id === tower.playerId);
+    if (towerOwner && towerOwner.sessionStats) {
+      towerOwner.sessionStats.goldSpent += evolveCost;
+    }
+
+    this.checkEconomyAchievements(game);
 
     const modifiers = branchConfig.modifiers;
     if (modifiers.damage) tower.damage *= (1 + modifiers.damage);
@@ -1046,6 +1135,217 @@ export class GameEngineService {
     return this.games.get(gameId) || null;
   }
 
+  handleDisconnect(game: Game, playerId: string): void {
+    const player = game.players.find(p => p.id === playerId);
+    if (player) {
+      player.isConnected = false;
+      player.disconnectTimer = 30;
+    }
+  }
+
+  handleReconnect(game: Game, playerId: string): void {
+    const player = game.players.find(p => p.id === playerId);
+    if (player) {
+      player.isConnected = true;
+      player.disconnectTimer = undefined;
+    }
+  }
+
+  private async loadPlayerHistoricalProgress(gameId: string, playerId: string): Promise<Map<string, PlayerAchievementProgress>> {
+    const gameMap = this.playerHistoricalProgress.get(gameId);
+    if (gameMap && gameMap.size > 0) {
+      return gameMap;
+    }
+
+    const progressList = await this.achievementService.getAllPlayerAchievements(playerId);
+    const progressMap = new Map<string, PlayerAchievementProgress>();
+    for (const p of progressList) {
+      progressMap.set(p.id, p);
+    }
+    
+    this.playerHistoricalProgress.set(gameId, progressMap);
+    return progressMap;
+  }
+
+  private async checkKillAchievements(game: Game): Promise<void> {
+    for (const player of game.players) {
+      const historicalProgress = await this.loadPlayerHistoricalProgress(game.id, player.id);
+      
+      const sessionStats: PlayerGameSessionStats = {
+        kills: player.kills,
+        towersBuilt: player.sessionStats?.towersBuilt || 0,
+        goldSpent: player.sessionStats?.goldSpent || 0,
+        finalWave: game.currentWave,
+        victory: false,
+        difficulty: game.difficulty,
+      };
+
+      const newlyUnlocked = this.checkAchievementsForCategory(historicalProgress, sessionStats, 'kill');
+      if (newlyUnlocked.length > 0) {
+        this.addNewlyUnlocked(game.id, player.id, newlyUnlocked);
+        for (const achievement of newlyUnlocked) {
+          const progress = historicalProgress.get(achievement.id);
+          if (progress) {
+            progress.unlocked = true;
+            progress.unlockedAt = Date.now();
+          }
+        }
+        this.saveUnlockedAchievements(player.id, newlyUnlocked, historicalProgress);
+      }
+    }
+  }
+
+  private async checkBuildAndEconomyAchievements(game: Game, playerId: string): Promise<void> {
+    const player = game.players.find(p => p.id === playerId);
+    if (!player) return;
+
+    const historicalProgress = await this.loadPlayerHistoricalProgress(game.id, playerId);
+    
+    const sessionStats: PlayerGameSessionStats = {
+      kills: player.kills,
+      towersBuilt: player.sessionStats?.towersBuilt || 0,
+      goldSpent: player.sessionStats?.goldSpent || 0,
+      finalWave: game.currentWave,
+      victory: false,
+      difficulty: game.difficulty,
+    };
+
+    const buildUnlocked = this.checkAchievementsForCategory(historicalProgress, sessionStats, 'build');
+    const economyUnlocked = this.checkAchievementsForCategory(historicalProgress, sessionStats, 'economy');
+    
+    const allUnlocked = [...buildUnlocked, ...economyUnlocked];
+    if (allUnlocked.length > 0) {
+      this.addNewlyUnlocked(game.id, playerId, allUnlocked);
+      for (const achievement of allUnlocked) {
+        const progress = historicalProgress.get(achievement.id);
+        if (progress) {
+          progress.unlocked = true;
+          progress.unlockedAt = Date.now();
+        }
+      }
+      this.saveUnlockedAchievements(playerId, allUnlocked, historicalProgress);
+    }
+  }
+
+  private async checkEconomyAchievements(game: Game): Promise<void> {
+    for (const player of game.players) {
+      const historicalProgress = await this.loadPlayerHistoricalProgress(game.id, player.id);
+      
+      const sessionStats: PlayerGameSessionStats = {
+        kills: player.kills,
+        towersBuilt: player.sessionStats?.towersBuilt || 0,
+        goldSpent: player.sessionStats?.goldSpent || 0,
+        finalWave: game.currentWave,
+        victory: false,
+        difficulty: game.difficulty,
+      };
+
+      const newlyUnlocked = this.checkAchievementsForCategory(historicalProgress, sessionStats, 'economy');
+      if (newlyUnlocked.length > 0) {
+        this.addNewlyUnlocked(game.id, player.id, newlyUnlocked);
+        for (const achievement of newlyUnlocked) {
+          const progress = historicalProgress.get(achievement.id);
+          if (progress) {
+            progress.unlocked = true;
+            progress.unlockedAt = Date.now();
+          }
+        }
+        this.saveUnlockedAchievements(player.id, newlyUnlocked, historicalProgress);
+      }
+    }
+  }
+
+  private checkAchievementsForCategory(
+    historicalProgress: Map<string, PlayerAchievementProgress>,
+    sessionStats: PlayerGameSessionStats,
+    category: string
+  ): AchievementDef[] {
+    const newlyUnlocked: AchievementDef[] = [];
+    const achievements = this.achievementService.getAchievementDefs().filter(a => a.category === category);
+
+    for (const def of achievements) {
+      const progress = historicalProgress.get(def.id);
+      if (!progress || progress.unlocked) continue;
+
+      let currentValue = progress.currentValue;
+      
+      switch (def.category) {
+        case 'kill':
+          currentValue += sessionStats.kills;
+          break;
+        case 'build':
+          currentValue += sessionStats.towersBuilt;
+          break;
+        case 'economy':
+          currentValue += sessionStats.goldSpent;
+          break;
+        case 'clear':
+          if (sessionStats.victory) {
+            if (
+              (def.id === 'clear_normal' && sessionStats.difficulty === 'normal') ||
+              (def.id === 'clear_hard' && sessionStats.difficulty === 'hard') ||
+              (def.id === 'clear_hell' && sessionStats.difficulty === 'hell')
+            ) {
+              currentValue = 1;
+            }
+          }
+          break;
+      }
+
+      if (currentValue >= def.threshold) {
+        newlyUnlocked.push(def);
+      }
+    }
+
+    return newlyUnlocked;
+  }
+
+  private addNewlyUnlocked(gameId: string, playerId: string, achievements: AchievementDef[]): void {
+    let playerMap = this.gameNewlyUnlocked.get(gameId);
+    if (!playerMap) {
+      playerMap = new Map();
+      this.gameNewlyUnlocked.set(gameId, playerMap);
+    }
+
+    const existing = playerMap.get(playerId) || [];
+    const existingIds = new Set(existing.map(a => a.id));
+    for (const achievement of achievements) {
+      if (!existingIds.has(achievement.id)) {
+        existing.push(achievement);
+      }
+    }
+    playerMap.set(playerId, existing);
+  }
+
+  private async saveUnlockedAchievements(
+    playerId: string,
+    achievements: AchievementDef[],
+    historicalProgress: Map<string, PlayerAchievementProgress>
+  ): Promise<void> {
+    for (const achievement of achievements) {
+      const progress = historicalProgress.get(achievement.id);
+      if (progress && !progress.unlocked) {
+        progress.unlocked = true;
+        progress.unlockedAt = Date.now();
+        await this.achievementService.unlockAchievement(playerId, achievement.id);
+      }
+    }
+  }
+
+  getNewlyUnlockedAchievements(gameId: string, playerId: string): AchievementDef[] {
+    const playerMap = this.gameNewlyUnlocked.get(gameId);
+    if (!playerMap) return [];
+    return playerMap.get(playerId) || [];
+  }
+
+  popNewlyUnlockedAchievements(gameId: string, playerId: string): AchievementDef[] {
+    const playerMap = this.gameNewlyUnlocked.get(gameId);
+    if (!playerMap) return [];
+    const achievements = playerMap.get(playerId) || [];
+    playerMap.set(playerId, []);
+    return achievements;
+  }
+
   removeGame(gameId: string): void {
     const game = this.games.get(gameId);
     
@@ -1061,21 +1361,7 @@ export class GameEngineService {
     this.mapNames.delete(gameId);
     this.moveRecordCounters.delete(gameId);
     this.attackRecordCounters.delete(gameId);
-  }
-
-  handleDisconnect(game: Game, playerId: string): void {
-    const player = game.players.find(p => p.id === playerId);
-    if (player) {
-      player.isConnected = false;
-      player.disconnectTimer = 30;
-    }
-  }
-
-  handleReconnect(game: Game, playerId: string): void {
-    const player = game.players.find(p => p.id === playerId);
-    if (player) {
-      player.isConnected = true;
-      player.disconnectTimer = undefined;
-    }
+    this.playerHistoricalProgress.delete(gameId);
+    this.gameNewlyUnlocked.delete(gameId);
   }
 }

@@ -1,7 +1,11 @@
 import { io, Socket } from 'socket.io-client';
 import { createContext, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { Game, Room, TowerType, TargetStrategy, SkillType, ChatMessage, ReplaySummary, ReplayData } from '../types/game.types';
+import type { 
+  Game, Room, TowerType, TargetStrategy, SkillType, 
+  ChatMessage, ReplaySummary, ReplayData,
+  PlayerAchievementProgress, LeaderboardEntry, AchievementDef
+} from '../types/game.types';
 
 class GameSocket {
   private socket: Socket | null = null;
@@ -116,6 +120,12 @@ export interface GameStoreState {
   leftReplay: ReplayData | null;
   rightReplay: ReplayData | null;
   toastMessage: string | null;
+  achievements: PlayerAchievementProgress[];
+  leaderboardKills: LeaderboardEntry[];
+  leaderboardWaves: LeaderboardEntry[];
+  leaderboardWins: LeaderboardEntry[];
+  achievementNotifications: AchievementDef[];
+  showAchievementModal: boolean;
 }
 
 export interface GameStoreActions {
@@ -137,6 +147,15 @@ export interface GameStoreActions {
   setRightReplay: (replay: ReplayData | null) => void;
   showToast: (msg: string) => void;
   clearToast: () => void;
+  setAchievements: (achievements: PlayerAchievementProgress[]) => void;
+  setLeaderboardKills: (entries: LeaderboardEntry[]) => void;
+  setLeaderboardWaves: (entries: LeaderboardEntry[]) => void;
+  setLeaderboardWins: (entries: LeaderboardEntry[]) => void;
+  addAchievementNotification: (achievement: AchievementDef) => void;
+  removeAchievementNotification: (id: string) => void;
+  setShowAchievementModal: (show: boolean) => void;
+  fetchAchievements: () => Promise<void>;
+  fetchLeaderboard: (type: string) => Promise<void>;
 }
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -157,6 +176,12 @@ const initialState: GameStoreState = {
   leftReplay: null,
   rightReplay: null,
   toastMessage: null,
+  achievements: [],
+  leaderboardKills: [],
+  leaderboardWaves: [],
+  leaderboardWins: [],
+  achievementNotifications: [],
+  showAchievementModal: false,
 };
 
 let toastTimer: number | null = null;
@@ -247,6 +272,58 @@ export function createGameStore(): GameStore {
     }
   };
 
+  const setAchievements = (achievements: PlayerAchievementProgress[]) => {
+    setState('achievements', achievements);
+  };
+
+  const setLeaderboardKills = (entries: LeaderboardEntry[]) => {
+    setState('leaderboardKills', entries);
+  };
+
+  const setLeaderboardWaves = (entries: LeaderboardEntry[]) => {
+    setState('leaderboardWaves', entries);
+  };
+
+  const setLeaderboardWins = (entries: LeaderboardEntry[]) => {
+    setState('leaderboardWins', entries);
+  };
+
+  const addAchievementNotification = (achievement: AchievementDef) => {
+    setState('achievementNotifications', (prev) => [...prev, achievement]);
+  };
+
+  const removeAchievementNotification = (id: string) => {
+    setState('achievementNotifications', (prev) => prev.filter(a => a.id !== id));
+  };
+
+  const setShowAchievementModal = (show: boolean) => {
+    setState('showAchievementModal', show);
+  };
+
+  const fetchAchievements = async () => {
+    const response = await gameSocket.emit('get-player-achievements', {});
+    if (response.success) {
+      setAchievements(response.achievements);
+    }
+  };
+
+  const fetchLeaderboard = async (type: string) => {
+    const response = await gameSocket.emit('get-leaderboard', { type, limit: 20 });
+    if (response.success) {
+      switch (type) {
+        case 'kills':
+          setLeaderboardKills(response.entries);
+          break;
+        case 'waves':
+          setLeaderboardWaves(response.entries);
+          break;
+        case 'wins':
+          setLeaderboardWins(response.entries);
+          break;
+      }
+    }
+  };
+
   return {
     get room() { return state.room; },
     get game() { return state.game; },
@@ -263,6 +340,12 @@ export function createGameStore(): GameStore {
     get leftReplay() { return state.leftReplay; },
     get rightReplay() { return state.rightReplay; },
     get toastMessage() { return state.toastMessage; },
+    get achievements() { return state.achievements; },
+    get leaderboardKills() { return state.leaderboardKills; },
+    get leaderboardWaves() { return state.leaderboardWaves; },
+    get leaderboardWins() { return state.leaderboardWins; },
+    get achievementNotifications() { return state.achievementNotifications; },
+    get showAchievementModal() { return state.showAchievementModal; },
     setRoom,
     setGame,
     setPlayerId,
@@ -281,6 +364,15 @@ export function createGameStore(): GameStore {
     setRightReplay,
     showToast,
     clearToast,
+    setAchievements,
+    setLeaderboardKills,
+    setLeaderboardWaves,
+    setLeaderboardWins,
+    addAchievementNotification,
+    removeAchievementNotification,
+    setShowAchievementModal,
+    fetchAchievements,
+    fetchLeaderboard,
     _state: state
   } as GameStore;
 }

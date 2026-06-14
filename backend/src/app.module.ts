@@ -5,6 +5,8 @@ import { RoomService } from './services/room.service';
 import { GameEngineService } from './services/game-engine.service';
 import { RedisService } from './services/redis.service';
 import { ReplayService } from './services/replay.service';
+import { AchievementService } from './services/achievement.service';
+import { LeaderboardService } from './services/leaderboard.service';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { ReplayService } from './services/replay.service';
     GameEngineService,
     RedisService,
     ReplayService,
+    AchievementService,
+    LeaderboardService,
   ],
 })
 export class AppModule {}

@@ -382,3 +382,30 @@ export interface ReplaySummary {
   victory: boolean;
   markers?: ReplayMarker[];
 }
+
+export type AchievementCategory = 'kill' | 'build' | 'clear' | 'economy';
+
+export interface AchievementDef {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: AchievementCategory;
+  threshold: number;
+}
+
+export interface PlayerAchievementProgress {
+  id: string;
+  currentValue: number;
+  unlocked: boolean;
+  unlockedAt?: number;
+}
+
+export type LeaderboardType = 'kills' | 'waves' | 'wins';
+
+export interface LeaderboardEntry {
+  playerId: string;
+  playerName: string;
+  score: number;
+  rank: number;
+}

@@ -105,6 +105,10 @@ export interface Player {
   kills: number;
   isConnected: boolean;
   disconnectTimer?: number;
+  sessionStats?: {
+    towersBuilt: number;
+    goldSpent: number;
+  };
 }
 
 export interface WaveConfig {
@@ -385,4 +389,45 @@ export interface ReplaySummary {
   finalWave: number;
   victory: boolean;
   markers?: ReplayMarker[];
+}
+
+export type AchievementCategory = 'kill' | 'build' | 'clear' | 'economy';
+
+export interface AchievementDef {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: AchievementCategory;
+  threshold: number;
+}
+
+export interface PlayerAchievementProgress {
+  id: string;
+  currentValue: number;
+  unlocked: boolean;
+  unlockedAt?: number;
+}
+
+export interface PlayerGameSessionStats {
+  kills: number;
+  towersBuilt: number;
+  goldSpent: number;
+  finalWave: number;
+  victory: boolean;
+  difficulty: string;
+}
+
+export type LeaderboardType = 'kills' | 'waves' | 'wins';
+
+export interface LeaderboardEntry {
+  playerId: string;
+  playerName: string;
+  value: number;
+  rank: number;
+}
+
+export interface GameEndAchievementResult {
+  newlyUnlocked: AchievementDef[];
+  updatedProgress: PlayerAchievementProgress[];
 }
