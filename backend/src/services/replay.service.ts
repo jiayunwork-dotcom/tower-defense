@@ -52,6 +52,8 @@ interface ActiveRecording {
 @Injectable()
 export class ReplayService {
   private activeRecordings: Map<string, ActiveRecording> = new Map();
+  private memoryReplays: Map<string, ReplayData> = new Map();
+  private memoryReplayList: ReplaySummary[] = [];
 
   constructor(private redisService: RedisService) {}
 
@@ -98,19 +100,33 @@ export class ReplayService {
       events: recording.events,
     };
 
-    this.saveReplay(replayData);
-    this.addReplayToList(replayData);
+    this.memoryReplays.set(gameId, replayData);
+    this.addToMemoryList(replayData);
+
+    this.saveReplay(replayData).catch((err) => {
+      console.error(`[ReplayService] Failed to save replay ${gameId} to Redis:`, err.message);
+    });
+    this.addReplayToList(replayData).catch((err) => {
+      console.error(`[ReplayService] Failed to add replay ${gameId} to list:`, err.message);
+    });
 
     this.activeRecordings.delete(gameId);
+
+    console.log(`[ReplayService] Recording stopped for game ${gameId}, ${recording.events.length} events, duration ${duration.toFixed(1)}s`);
   }
 
   private async saveReplay(replayData: ReplayData): Promise<void> {
-    const key = `${REPLAY_KEY_PREFIX}${replayData.metadata.gameId}`;
-    const value = JSON.stringify(replayData);
-    await this.redisService.set(key, value, REPLAY_TTL_SECONDS);
+    try {
+      const key = `${REPLAY_KEY_PREFIX}${replayData.metadata.gameId}`;
+      const value = JSON.stringify(replayData);
+      await this.redisService.set(key, value, REPLAY_TTL_SECONDS);
+    } catch (err: any) {
+      console.warn(`[ReplayService] Redis save failed for replay ${replayData.metadata.gameId}, kept in memory:`, err.message);
+      throw err;
+    }
   }
 
-  private async addReplayToList(replayData: ReplayData): Promise<void> {
+  private addToMemoryList(replayData: ReplayData): void {
     const summary: ReplaySummary = {
       gameId: replayData.metadata.gameId,
       startTime: replayData.metadata.startTime,
@@ -121,42 +137,84 @@ export class ReplayService {
       victory: replayData.metadata.victory,
     };
 
-    const listStr = await this.redisService.get(REPLAY_LIST_KEY);
-    let list: ReplaySummary[] = [];
-    if (listStr) {
-      try {
-        list = JSON.parse(listStr);
-      } catch {
-        list = [];
+    this.memoryReplayList.unshift(summary);
+    this.memoryReplayList = this.memoryReplayList.slice(0, MAX_REPLAY_LIST_SIZE);
+  }
+
+  private async addReplayToList(replayData: ReplayData): Promise<void> {
+    try {
+      const summary: ReplaySummary = {
+        gameId: replayData.metadata.gameId,
+        startTime: replayData.metadata.startTime,
+        duration: replayData.metadata.duration,
+        mapName: replayData.metadata.mapName,
+        playerCount: replayData.metadata.players.length,
+        finalWave: replayData.metadata.finalWave,
+        victory: replayData.metadata.victory,
+      };
+
+      const listStr = await this.redisService.get(REPLAY_LIST_KEY);
+      let list: ReplaySummary[] = [];
+      if (listStr) {
+        try {
+          list = JSON.parse(listStr);
+        } catch {
+          list = [];
+        }
       }
+
+      list.unshift(summary);
+      list = list.slice(0, MAX_REPLAY_LIST_SIZE);
+
+      await this.redisService.set(REPLAY_LIST_KEY, JSON.stringify(list));
+    } catch (err: any) {
+      console.warn(`[ReplayService] Redis list update failed, using memory fallback:`, err.message);
+      throw err;
     }
-
-    list.unshift(summary);
-    list = list.slice(0, MAX_REPLAY_LIST_SIZE);
-
-    await this.redisService.set(REPLAY_LIST_KEY, JSON.stringify(list));
   }
 
   async getReplay(gameId: string): Promise<ReplayData | null> {
-    const key = `${REPLAY_KEY_PREFIX}${gameId}`;
-    const value = await this.redisService.get(key);
-    if (!value) return null;
+    const memoryReplay = this.memoryReplays.get(gameId);
+    if (memoryReplay) {
+      return memoryReplay;
+    }
+
     try {
-      return JSON.parse(value);
-    } catch {
+      const key = `${REPLAY_KEY_PREFIX}${gameId}`;
+      const value = await this.redisService.get(key);
+      if (!value) return null;
+      try {
+        const replayData = JSON.parse(value);
+        this.memoryReplays.set(gameId, replayData);
+        return replayData;
+      } catch {
+        return null;
+      }
+    } catch (err: any) {
+      console.warn(`[ReplayService] Redis get failed for replay ${gameId}:`, err.message);
       return null;
     }
   }
 
   async listReplays(): Promise<ReplaySummary[]> {
-    const listStr = await this.redisService.get(REPLAY_LIST_KEY);
-    if (!listStr) return [];
     try {
-      const list: ReplaySummary[] = JSON.parse(listStr);
-      return list.slice(0, 10);
-    } catch {
-      return [];
+      const listStr = await this.redisService.get(REPLAY_LIST_KEY);
+      if (listStr) {
+        try {
+          const list: ReplaySummary[] = JSON.parse(listStr);
+          const result = list.slice(0, 10);
+          if (result.length > 0) {
+            return result;
+          }
+        } catch {
+          // fall through to memory fallback
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[ReplayService] Redis list failed, using memory fallback:`, err.message);
     }
+
+    return this.memoryReplayList.slice(0, 10);
   }
 
   recordMonsterSpawn(

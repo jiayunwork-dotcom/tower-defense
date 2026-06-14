@@ -1047,6 +1047,15 @@ export class GameEngineService {
   }
 
   removeGame(gameId: string): void {
+    const game = this.games.get(gameId);
+    
+    if (game && this.replayService.isRecording(gameId)) {
+      const victory = game.lives > 0;
+      const finalWave = game.currentWave;
+      this.replayService.recordGameEnd(gameId, victory, finalWave, game.elapsedTime);
+      this.replayService.stopRecording(gameId, finalWave, victory);
+    }
+    
     this.stopGameLoop(gameId);
     this.games.delete(gameId);
     this.mapNames.delete(gameId);

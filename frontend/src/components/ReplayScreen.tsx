@@ -1,4 +1,4 @@
-import { onMount, onCleanup, createSignal } from 'solid-js';
+import { onMount, onCleanup, createSignal, createMemo } from 'solid-js';
 import { useGameContext } from '../store/game.store';
 import { GameRenderer } from '../utils/game-renderer';
 import { ReplayEngine, ReplayState } from '../utils/replay-engine';
@@ -177,7 +177,9 @@ export default function ReplayScreen() {
   });
 
   const metadata = store.currentReplay?.metadata;
-  const progress = totalDuration() > 0 ? (currentTime() / totalDuration()) * 100 : 0;
+  const progress = createMemo(() => 
+    totalDuration() > 0 ? (currentTime() / totalDuration()) * 100 : 0
+  );
 
   return (
     <div class="replay-screen">
@@ -257,11 +259,11 @@ export default function ReplayScreen() {
           <div class="replay-progress-bg"></div>
           <div 
             class="replay-progress-fill"
-            style={{ width: `${progress}%` }}
+            style={{ width: `${progress()}%` }}
           ></div>
           <div 
             class="replay-progress-thumb"
-            style={{ left: `calc(${progress}% - 8px)` }}
+            style={{ left: `calc(${progress()}% - 8px)` }}
           ></div>
         </div>
 
