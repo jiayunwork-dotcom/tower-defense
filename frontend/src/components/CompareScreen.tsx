@@ -378,7 +378,7 @@ export default function CompareScreen() {
     });
 
     const t = Math.max(left.playbackTimeMs, right.playbackTimeMs);
-    setMainTime((prev) => (t > prev ? t : prev));
+    setMainTime(t);
 
     if (left.renderer && left.state && !left.isLoading) {
       left.renderer.render(left.state.game, null, null);

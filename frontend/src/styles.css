@@ -1559,6 +1559,18 @@ input:focus {
   width: 34px;
 }
 
+.stats-panel-toggle-open {
+  background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
+  color: white;
+  width: 34px;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.stats-panel-toggle-open:hover {
+  background: linear-gradient(180deg, var(--secondary) 0%, var(--primary) 100%);
+}
+
 .stats-panel {
   width: 280px;
   flex-shrink: 0;

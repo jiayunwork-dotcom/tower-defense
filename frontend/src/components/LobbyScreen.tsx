@@ -315,7 +315,7 @@ export default function LobbyScreen() {
             'lobby-tab': true,
             'lobby-tab-active': activeTab() === 'rooms'
           }}
-          onClick={() => { setActiveTab('rooms'); clearCompareSelection(); }}
+          onClick={() => { setActiveTab('rooms'); clearCompareSelection(); setErrorMsg(''); }}
         >
           🎮 可用房间
         </button>
@@ -324,7 +324,7 @@ export default function LobbyScreen() {
             'lobby-tab': true,
             'lobby-tab-active': activeTab() === 'replays'
           }}
-          onClick={() => setActiveTab('replays')}
+          onClick={() => { setActiveTab('replays'); setErrorMsg(''); }}
         >
           📹 回放列表
         </button>

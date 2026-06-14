@@ -542,14 +542,14 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     try {
       if (!data.gameId) {
-        return { success: false, error: 'gameId is required' };
+        return { success: false, error: '缺少gameId参数' };
       }
 
       const replay = await this.replayService.getReplay(data.gameId);
       if (!replay) {
         return { 
           success: false, 
-          error: 'Replay not found or expired. Replays are stored for 24 hours.' 
+          error: '回放不存在或已过期（回放仅保存24小时）' 
         };
       }
 
