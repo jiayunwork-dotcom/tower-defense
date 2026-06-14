@@ -4,6 +4,7 @@ import { GameGateway } from './gateways/game.gateway';
 import { RoomService } from './services/room.service';
 import { GameEngineService } from './services/game-engine.service';
 import { RedisService } from './services/redis.service';
+import { ReplayService } from './services/replay.service';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { RedisService } from './services/redis.service';
     RoomService,
     GameEngineService,
     RedisService,
+    ReplayService,
   ],
 })
 export class AppModule {}

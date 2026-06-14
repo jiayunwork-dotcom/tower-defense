@@ -4,6 +4,7 @@ import type { GameStore } from './store/game.store';
 import LobbyScreen from './components/LobbyScreen';
 import GameScreen from './components/GameScreen';
 import RoomScreen from './components/RoomScreen';
+import ReplayScreen from './components/ReplayScreen';
 
 export default function App() {
   const store: GameStore = createGameStore();
@@ -111,6 +112,10 @@ export default function App() {
   });
 
   const currentScreen = () => {
+    if (store.isInReplayMode) {
+      return <ReplayScreen />;
+    }
+    
     const room = store.room;
     const game = store.game;
     

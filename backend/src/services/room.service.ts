@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Room, Player, GameState, SkillType } from '../types/game.types';
 import { RedisService } from './redis.service';
 import { GameEngineService } from './game-engine.service';
+import { ReplayService } from './replay.service';
 
 @Injectable()
 export class RoomService {
@@ -10,7 +11,8 @@ export class RoomService {
 
   constructor(
     private redisService: RedisService,
-    private gameEngineService: GameEngineService
+    private gameEngineService: GameEngineService,
+    private replayService: ReplayService
   ) {}
 
   createRoom(name: string, hostId: string, hostName: string, maxPlayers: number = 4): Room {

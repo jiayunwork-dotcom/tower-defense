@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { createContext, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { Game, Room, TowerType, TargetStrategy, SkillType, ChatMessage } from '../types/game.types';
+import type { Game, Room, TowerType, TargetStrategy, SkillType, ChatMessage, ReplaySummary, ReplayData } from '../types/game.types';
 
 class GameSocket {
   private socket: Socket | null = null;
@@ -108,6 +108,9 @@ export interface GameStoreState {
   selectedTowerId: string | null;
   chatMessages: ChatMessage[];
   kickedMessage: string | null;
+  replayList: ReplaySummary[];
+  currentReplay: ReplayData | null;
+  isInReplayMode: boolean;
 }
 
 export interface GameStoreActions {
@@ -120,6 +123,9 @@ export interface GameStoreActions {
   setKickedMessage: (msg: string | null) => void;
   updateGame: (patch: Partial<Game>) => void;
   updateRoom: (patch: Partial<Room>) => void;
+  setReplayList: (list: ReplaySummary[]) => void;
+  setCurrentReplay: (replay: ReplayData | null) => void;
+  setIsInReplayMode: (value: boolean) => void;
 }
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -131,7 +137,10 @@ const initialState: GameStoreState = {
   selectedTowerType: null,
   selectedTowerId: null,
   chatMessages: [],
-  kickedMessage: null
+  kickedMessage: null,
+  replayList: [],
+  currentReplay: null,
+  isInReplayMode: false
 };
 
 export function createGameStore(): GameStore {
@@ -173,6 +182,18 @@ export function createGameStore(): GameStore {
     setState('room', (prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
+  const setReplayList = (list: ReplaySummary[]) => {
+    setState('replayList', list);
+  };
+
+  const setCurrentReplay = (replay: ReplayData | null) => {
+    setState('currentReplay', replay);
+  };
+
+  const setIsInReplayMode = (value: boolean) => {
+    setState('isInReplayMode', value);
+  };
+
   return {
     get room() { return state.room; },
     get game() { return state.game; },
@@ -181,6 +202,9 @@ export function createGameStore(): GameStore {
     get selectedTowerId() { return state.selectedTowerId; },
     get chatMessages() { return state.chatMessages; },
     get kickedMessage() { return state.kickedMessage; },
+    get replayList() { return state.replayList; },
+    get currentReplay() { return state.currentReplay; },
+    get isInReplayMode() { return state.isInReplayMode; },
     setRoom,
     setGame,
     setPlayerId,
@@ -190,6 +214,9 @@ export function createGameStore(): GameStore {
     setKickedMessage,
     updateGame,
     updateRoom,
+    setReplayList,
+    setCurrentReplay,
+    setIsInReplayMode,
     _state: state
   } as GameStore;
 }

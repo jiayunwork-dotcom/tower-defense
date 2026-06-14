@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { RoomService } from '../services/room.service';
 import { GameEngineService } from '../services/game-engine.service';
+import { ReplayService } from '../services/replay.service';
 import { TowerType, TargetStrategy, SkillType } from '../types/game.types';
 
 @WebSocketGateway({
@@ -27,7 +28,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   constructor(
     private roomService: RoomService,
-    private gameEngineService: GameEngineService
+    private gameEngineService: GameEngineService,
+    private replayService: ReplayService
   ) {}
 
   handleConnection(client: Socket) {
@@ -522,5 +524,38 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     return { success: true, room };
+  }
+
+  @SubscribeMessage('list-replays')
+  async handleListReplays() {
+    try {
+      const replays = await this.replayService.listReplays();
+      return { success: true, replays };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  @SubscribeMessage('get-replay')
+  async handleGetReplay(
+    @MessageBody() data: { gameId: string }
+  ) {
+    try {
+      if (!data.gameId) {
+        return { success: false, error: 'gameId is required' };
+      }
+
+      const replay = await this.replayService.getReplay(data.gameId);
+      if (!replay) {
+        return { 
+          success: false, 
+          error: 'Replay not found or expired. Replays are stored for 24 hours.' 
+        };
+      }
+
+      return { success: true, replay };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   }
 }

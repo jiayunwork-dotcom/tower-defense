@@ -12,11 +12,17 @@ import {
   HIGHLAND_DAMAGE_BONUS, WATER_SLOW_AMOUNT, CELL_SIZE
 } from '../constants/game.constants';
 import { getMapByName } from '../config/maps.config';
+import { ReplayService } from './replay.service';
 
 @Injectable()
 export class GameEngineService {
   private games: Map<string, Game> = new Map();
   private gameIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private moveRecordCounters: Map<string, number> = new Map();
+  private attackRecordCounters: Map<string, number> = new Map();
+  private mapNames: Map<string, string> = new Map();
+
+  constructor(private replayService: ReplayService) {}
 
   createGame(roomId: string, mapName: string, players: Player[]): Game {
     const map = getMapByName(mapName, CELL_SIZE);
@@ -63,6 +69,10 @@ export class GameEngineService {
     };
 
     this.games.set(roomId, game);
+    this.mapNames.set(roomId, mapName);
+    this.moveRecordCounters.set(roomId, 0);
+    this.attackRecordCounters.set(roomId, 0);
+    this.replayService.startRecording(game, mapName);
     return game;
   }
 
@@ -146,6 +156,9 @@ export class GameEngineService {
     if (game.isEndless && game.currentWave > 10 && game.currentWave % 10 === 1) {
       game.endlessMultiplier *= 1.2;
     }
+
+    const isBossWave = game.currentWave % 10 === 0;
+    this.replayService.recordWaveStart(game.id, game.currentWave, isBossWave, game.elapsedTime);
   }
 
   private updateWave(game: Game, deltaTime: number): void {
@@ -291,6 +304,7 @@ export class GameEngineService {
     }
 
     game.monsters.push(monster);
+    this.replayService.recordMonsterSpawn(game.id, monster, game.elapsedTime);
   }
 
   private endWave(game: Game): void {
@@ -305,9 +319,16 @@ export class GameEngineService {
       INTEREST_MAX
     );
     game.gold += interest;
+
+    this.replayService.recordWaveEnd(game.id, game.currentWave, interest, game.elapsedTime);
+    this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
   }
 
   private updateMonsters(game: Game, deltaTime: number): void {
+    const moveCounter = this.moveRecordCounters.get(game.id) || 0;
+    const shouldRecordMove = moveCounter % 3 === 0;
+    this.moveRecordCounters.set(game.id, moveCounter + 1);
+
     for (let i = game.monsters.length - 1; i >= 0; i--) {
       const monster = game.monsters[i];
       
@@ -327,6 +348,10 @@ export class GameEngineService {
       }
 
       this.moveMonster(monster, deltaTime, game);
+
+      if (shouldRecordMove) {
+        this.replayService.recordMonsterMove(game.id, monster, game.elapsedTime);
+      }
 
       if (this.hasReachedBase(monster, game)) {
         this.monsterReachBase(game, monster, i);
@@ -443,16 +468,22 @@ export class GameEngineService {
     const lifeCost = monster.type === 'boss' ? BOSS_LIFE_COST : NORMAL_LIFE_COST;
     game.lives -= lifeCost;
     game.monsters.splice(index, 1);
+
+    this.replayService.recordLivesChange(game.id, game.lives, lifeCost, game.elapsedTime);
   }
 
   private killMonster(game: Game, monster: Monster, index: number): void {
-    game.gold += monster.gold;
+    const goldReward = monster.gold;
+    game.gold += goldReward;
     
     if (monster.eliteAbility === 'split' && monster.hp <= 0 && monster.maxHp / monster.maxHp === 1) {
       this.splitMonster(game, monster);
     }
 
     game.monsters.splice(index, 1);
+
+    this.replayService.recordMonsterDeath(game.id, monster.id, goldReward, game.elapsedTime);
+    this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
   }
 
   private splitMonster(game: Game, monster: Monster): void {
@@ -529,6 +560,23 @@ export class GameEngineService {
 
     const buffMultiplier = 1 + (game.towerDamageBuffs.get(tower.id) || 0);
     damage *= buffMultiplier;
+
+    const attackCounter = this.attackRecordCounters.get(game.id) || 0;
+    const shouldRecordAttack = attackCounter % 2 === 0;
+    this.attackRecordCounters.set(game.id, attackCounter + 1);
+
+    if (shouldRecordAttack) {
+      this.replayService.recordTowerAttack(
+        game.id,
+        tower.id,
+        mainTarget.id,
+        damage,
+        !!config.isAOE,
+        !!config.isDOT,
+        !!config.isSlow,
+        game.elapsedTime
+      );
+    }
 
     if (config.isAOE) {
       for (const target of targets) {
@@ -743,6 +791,13 @@ export class GameEngineService {
     } else if (!game.isEndless && game.currentWave >= game.totalWaves && !game.isWaveActive && game.monsters.length === 0) {
       game.state = 'ended';
     }
+
+    if (game.state === 'ended' && this.replayService.isRecording(game.id)) {
+      const victory = game.lives > 0;
+      const finalWave = game.currentWave;
+      this.replayService.recordGameEnd(game.id, victory, finalWave, game.elapsedTime);
+      this.replayService.stopRecording(game.id, finalWave, victory);
+    }
   }
 
   buildTower(game: Game, playerId: string, type: TowerType, x: number, y: number): Tower | null {
@@ -774,6 +829,9 @@ export class GameEngineService {
 
     game.gold -= config.baseCost;
     game.towers.push(tower);
+
+    this.replayService.recordTowerBuild(game.id, tower, config.baseCost, game.elapsedTime);
+    this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
     
     return tower;
   }
@@ -847,6 +905,9 @@ export class GameEngineService {
     tower.range = config.range * (1 + (tower.level - 1) * 0.1);
     tower.attackSpeed = config.attackSpeed * (1 + (tower.level - 1) * 0.15);
 
+    this.replayService.recordTowerUpgrade(game.id, tower, upgradeCost, game.elapsedTime);
+    this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
+
     return tower;
   }
 
@@ -869,6 +930,9 @@ export class GameEngineService {
     if (modifiers.range) tower.range *= (1 + modifiers.range);
     if (modifiers.attackSpeed) tower.attackSpeed *= (1 + modifiers.attackSpeed);
 
+    this.replayService.recordTowerEvolve(game.id, tower.id, branch, evolveCost, game.elapsedTime);
+    this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
+
     return tower;
   }
 
@@ -880,6 +944,9 @@ export class GameEngineService {
     const refund = Math.floor(tower.totalCost * 0.8);
     game.gold += refund;
     game.towers.splice(index, 1);
+
+    this.replayService.recordTowerSell(game.id, towerId, refund, game.elapsedTime);
+    this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
 
     return true;
   }
@@ -896,6 +963,8 @@ export class GameEngineService {
     if (!player || player.skill !== skillType || player.skillCooldown > 0) return false;
 
     player.skillCooldown = SKILL_COOLDOWN;
+
+    this.replayService.recordSkillUse(game.id, playerId, skillType, targetX, targetY, game.elapsedTime);
 
     switch (skillType) {
       case 'freeze':
@@ -918,6 +987,7 @@ export class GameEngineService {
         break;
       case 'gold':
         game.gold += 100;
+        this.replayService.recordGoldChange(game.id, game.gold, game.elapsedTime);
         break;
     }
 
@@ -979,6 +1049,9 @@ export class GameEngineService {
   removeGame(gameId: string): void {
     this.stopGameLoop(gameId);
     this.games.delete(gameId);
+    this.mapNames.delete(gameId);
+    this.moveRecordCounters.delete(gameId);
+    this.attackRecordCounters.delete(gameId);
   }
 
   handleDisconnect(game: Game, playerId: string): void {

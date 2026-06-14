@@ -168,3 +168,191 @@ export interface Room {
   isLocked: boolean;
   createdAt: number;
 }
+
+export type ReplayEventType =
+  | 'monster-spawn'
+  | 'monster-move'
+  | 'monster-death'
+  | 'tower-build'
+  | 'tower-upgrade'
+  | 'tower-evolve'
+  | 'tower-sell'
+  | 'tower-attack'
+  | 'skill-use'
+  | 'wave-start'
+  | 'wave-end'
+  | 'game-end'
+  | 'gold-change'
+  | 'lives-change';
+
+export interface ReplayEventBase {
+  type: ReplayEventType;
+  timestamp: number;
+}
+
+export interface ReplayMonsterSpawnEvent extends ReplayEventBase {
+  type: 'monster-spawn';
+  monsterId: string;
+  monsterType: MonsterType;
+  pathId: number;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  speed: number;
+  eliteAbility?: EliteAbility;
+  bossSkills?: BossSkill[];
+  isFlying: boolean;
+}
+
+export interface ReplayMonsterMoveEvent extends ReplayEventBase {
+  type: 'monster-move';
+  monsterId: string;
+  x: number;
+  y: number;
+  pathIndex: number;
+  progress: number;
+  hp: number;
+  isStealthed?: boolean;
+  hasShield?: boolean;
+  shieldHp?: number;
+  poisonStacks?: number;
+  slowTimer?: number;
+  slowAmount?: number;
+  immuneType?: ImmuneType;
+  isRaging?: boolean;
+}
+
+export interface ReplayMonsterDeathEvent extends ReplayEventBase {
+  type: 'monster-death';
+  monsterId: string;
+  goldReward: number;
+}
+
+export interface ReplayTowerBuildEvent extends ReplayEventBase {
+  type: 'tower-build';
+  towerId: string;
+  towerType: TowerType;
+  x: number;
+  y: number;
+  playerId: string;
+  cost: number;
+}
+
+export interface ReplayTowerUpgradeEvent extends ReplayEventBase {
+  type: 'tower-upgrade';
+  towerId: string;
+  newLevel: number;
+  cost: number;
+  damage: number;
+  range: number;
+  attackSpeed: number;
+}
+
+export interface ReplayTowerEvolveEvent extends ReplayEventBase {
+  type: 'tower-evolve';
+  towerId: string;
+  branch: TowerBranch;
+  cost: number;
+}
+
+export interface ReplayTowerSellEvent extends ReplayEventBase {
+  type: 'tower-sell';
+  towerId: string;
+  refund: number;
+}
+
+export interface ReplayTowerAttackEvent extends ReplayEventBase {
+  type: 'tower-attack';
+  towerId: string;
+  targetId: string;
+  damage: number;
+  isAOE?: boolean;
+  isDOT?: boolean;
+  isSlow?: boolean;
+}
+
+export interface ReplaySkillUseEvent extends ReplayEventBase {
+  type: 'skill-use';
+  playerId: string;
+  skillType: SkillType;
+  targetX?: number;
+  targetY?: number;
+}
+
+export interface ReplayWaveStartEvent extends ReplayEventBase {
+  type: 'wave-start';
+  waveNumber: number;
+  isBossWave: boolean;
+}
+
+export interface ReplayWaveEndEvent extends ReplayEventBase {
+  type: 'wave-end';
+  waveNumber: number;
+  interestGold: number;
+}
+
+export interface ReplayGameEndEvent extends ReplayEventBase {
+  type: 'game-end';
+  victory: boolean;
+  finalWave: number;
+}
+
+export interface ReplayGoldChangeEvent extends ReplayEventBase {
+  type: 'gold-change';
+  newGold: number;
+}
+
+export interface ReplayLivesChangeEvent extends ReplayEventBase {
+  type: 'lives-change';
+  newLives: number;
+  lostLives: number;
+}
+
+export type ReplayEvent =
+  | ReplayMonsterSpawnEvent
+  | ReplayMonsterMoveEvent
+  | ReplayMonsterDeathEvent
+  | ReplayTowerBuildEvent
+  | ReplayTowerUpgradeEvent
+  | ReplayTowerEvolveEvent
+  | ReplayTowerSellEvent
+  | ReplayTowerAttackEvent
+  | ReplaySkillUseEvent
+  | ReplayWaveStartEvent
+  | ReplayWaveEndEvent
+  | ReplayGameEndEvent
+  | ReplayGoldChangeEvent
+  | ReplayLivesChangeEvent;
+
+export interface ReplayPlayerInfo {
+  name: string;
+  color: string;
+}
+
+export interface ReplayMetadata {
+  gameId: string;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  mapName: string;
+  players: ReplayPlayerInfo[];
+  finalWave: number;
+  victory: boolean;
+  totalEvents: number;
+}
+
+export interface ReplayData {
+  metadata: ReplayMetadata;
+  events: ReplayEvent[];
+}
+
+export interface ReplaySummary {
+  gameId: string;
+  startTime: number;
+  duration: number;
+  mapName: string;
+  playerCount: number;
+  finalWave: number;
+  victory: boolean;
+}
