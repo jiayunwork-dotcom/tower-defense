@@ -1269,27 +1269,32 @@ export class GameEngineService {
 
       let currentValue = progress.currentValue;
       
-      switch (def.category) {
-        case 'kill':
-          currentValue += sessionStats.kills;
-          break;
-        case 'build':
-          currentValue += sessionStats.towersBuilt;
-          break;
-        case 'economy':
-          currentValue += sessionStats.goldSpent;
-          break;
-        case 'clear':
-          if (sessionStats.victory) {
-            if (
-              (def.id === 'clear_normal' && sessionStats.difficulty === 'normal') ||
-              (def.id === 'clear_hard' && sessionStats.difficulty === 'hard') ||
-              (def.id === 'clear_hell' && sessionStats.difficulty === 'hell')
-            ) {
-              currentValue = 1;
+      if (def.isPerSession) {
+        switch (def.category) {
+          case 'build':
+            currentValue = sessionStats.towersBuilt;
+            break;
+          case 'economy':
+            currentValue = sessionStats.goldSpent;
+            break;
+        }
+      } else {
+        switch (def.category) {
+          case 'kill':
+            currentValue += sessionStats.kills;
+            break;
+          case 'clear':
+            if (sessionStats.victory) {
+              if (
+                (def.id === 'clear_normal' && sessionStats.difficulty === 'normal') ||
+                (def.id === 'clear_hard' && sessionStats.difficulty === 'hard') ||
+                (def.id === 'clear_hell' && sessionStats.difficulty === 'hell')
+              ) {
+                currentValue = 1;
+              }
             }
-          }
-          break;
+            break;
+        }
       }
 
       if (currentValue >= def.threshold) {

@@ -392,6 +392,7 @@ export interface AchievementDef {
   icon: string;
   category: AchievementCategory;
   threshold: number;
+  isPerSession: boolean;
 }
 
 export interface PlayerAchievementProgress {

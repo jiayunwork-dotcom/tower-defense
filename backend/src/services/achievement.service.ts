@@ -161,7 +161,11 @@ export class AchievementService {
           break;
       }
 
-      values.set(def.id, historicalValue + sessionValue);
+      if (def.isPerSession) {
+        values.set(def.id, Math.max(historicalValue, sessionValue));
+      } else {
+        values.set(def.id, historicalValue + sessionValue);
+      }
     }
 
     return values;
@@ -178,16 +182,16 @@ export class AchievementService {
       const def = ACHIEVEMENT_MAP.get(progress.id);
       if (!def) continue;
 
-      let sessionIncrement = 0;
+      let sessionValue = 0;
       switch (def.category) {
         case 'kill':
-          sessionIncrement = sessionStats.kills;
+          sessionValue = sessionStats.kills;
           break;
         case 'build':
-          sessionIncrement = 0;
+          sessionValue = sessionStats.towersBuilt;
           break;
         case 'economy':
-          sessionIncrement = 0;
+          sessionValue = sessionStats.goldSpent;
           break;
         case 'clear':
           if (sessionStats.victory) {
@@ -196,22 +200,30 @@ export class AchievementService {
               (def.id === 'clear_hard' && sessionStats.difficulty === 'hard') ||
               (def.id === 'clear_hell' && sessionStats.difficulty === 'hell')
             ) {
-              sessionIncrement = 1;
+              sessionValue = 1;
             }
           }
           break;
       }
 
-      if (sessionIncrement > 0 && !progress.unlocked) {
-        const newValue = progress.currentValue + sessionIncrement;
-        await this.redisService.hset(
-          key,
-          progress.id,
-          JSON.stringify({
-            currentValue: newValue,
-            unlocked: false,
-          })
-        );
+      if (!progress.unlocked && sessionValue > 0) {
+        let newValue: number;
+        if (def.isPerSession) {
+          newValue = Math.max(progress.currentValue, sessionValue);
+        } else {
+          newValue = progress.currentValue + sessionValue;
+        }
+
+        if (newValue !== progress.currentValue) {
+          await this.redisService.hset(
+            key,
+            progress.id,
+            JSON.stringify({
+              currentValue: newValue,
+              unlocked: false,
+            })
+          );
+        }
       }
     }
   }

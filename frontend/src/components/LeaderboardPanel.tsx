@@ -1,4 +1,4 @@
-import { createSignal, For, createEffect } from 'solid-js';
+import { createSignal, For, createEffect, onMount } from 'solid-js';
 import { useGameContext } from '../store/game.store';
 import type { LeaderboardEntry, LeaderboardType } from '../types/game.types';
 
@@ -46,11 +46,14 @@ export default function LeaderboardPanel() {
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
-    store.fetchLeaderboard(tab);
   };
 
-  createEffect(() => {
+  onMount(() => {
     store.fetchLeaderboard('kills');
+  });
+
+  createEffect(() => {
+    store.fetchLeaderboard(activeTab());
   });
 
   return (

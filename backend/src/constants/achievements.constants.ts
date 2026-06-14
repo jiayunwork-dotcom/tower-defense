@@ -8,6 +8,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '⚔️',
     category: 'kill',
     threshold: 100,
+    isPerSession: false,
   },
   {
     id: 'kill_500',
@@ -16,6 +17,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '🗡️',
     category: 'kill',
     threshold: 500,
+    isPerSession: false,
   },
   {
     id: 'kill_1000',
@@ -24,6 +26,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '💀',
     category: 'kill',
     threshold: 1000,
+    isPerSession: false,
   },
   {
     id: 'build_10',
@@ -32,6 +35,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '🏗️',
     category: 'build',
     threshold: 10,
+    isPerSession: true,
   },
   {
     id: 'build_20',
@@ -40,6 +44,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '🏰',
     category: 'build',
     threshold: 20,
+    isPerSession: true,
   },
   {
     id: 'build_30',
@@ -48,6 +53,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '🏯',
     category: 'build',
     threshold: 30,
+    isPerSession: true,
   },
   {
     id: 'clear_normal',
@@ -56,6 +62,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '🥉',
     category: 'clear',
     threshold: 1,
+    isPerSession: false,
   },
   {
     id: 'clear_hard',
@@ -64,6 +71,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '🥈',
     category: 'clear',
     threshold: 1,
+    isPerSession: false,
   },
   {
     id: 'clear_hell',
@@ -72,6 +80,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '🥇',
     category: 'clear',
     threshold: 1,
+    isPerSession: false,
   },
   {
     id: 'economy_2000',
@@ -80,6 +89,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '💰',
     category: 'economy',
     threshold: 2000,
+    isPerSession: true,
   },
   {
     id: 'economy_5000',
@@ -88,6 +98,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '💎',
     category: 'economy',
     threshold: 5000,
+    isPerSession: true,
   },
   {
     id: 'economy_10000',
@@ -96,6 +107,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: '👑',
     category: 'economy',
     threshold: 10000,
+    isPerSession: true,
   },
 ];
 
