@@ -1,4 +1,4 @@
-import { For, createEffect, createSignal, onCleanup } from 'solid-js';
+import { For, createEffect, createSignal, onCleanup, on, untrack } from 'solid-js';
 import { useGameContext } from '../store/game.store';
 import type { PlayerAchievementProgress, AchievementDef, AchievementRarity } from '../types/game.types';
 
@@ -58,28 +58,33 @@ export default function AchievementModal() {
   };
 
   const tickCountdown = () => {
-    if (store.seasonInfo) {
-      const elapsed = Math.floor((Date.now() - store.seasonInfo.nowTime) / 1000);
-      const remaining = Math.max(0, store.seasonInfo.remainingSeconds - elapsed);
-      setCountdown(remaining);
-      if (remaining === 0) {
-        store.fetchAchievements();
-      }
+    const seasonInfo = untrack(() => store.seasonInfo);
+    if (!seasonInfo) return;
+    
+    const now = Date.now();
+    const remaining = Math.max(0, Math.floor((seasonInfo.endTime - now) / 1000));
+    setCountdown(remaining);
+    
+    if (remaining === 0) {
+      store.fetchAchievements();
     }
   };
 
-  createEffect(() => {
-    if (store.showAchievementModal) {
-      store.fetchAchievements();
-      tickCountdown();
-      timerInterval = window.setInterval(tickCountdown, 1000);
-    } else {
-      if (timerInterval) {
-        window.clearInterval(timerInterval);
-        timerInterval = null;
+  createEffect(on(
+    () => store.showAchievementModal,
+    (show) => {
+      if (show) {
+        store.fetchAchievements();
+        tickCountdown();
+        timerInterval = window.setInterval(tickCountdown, 1000);
+      } else {
+        if (timerInterval) {
+          window.clearInterval(timerInterval);
+          timerInterval = null;
+        }
       }
     }
-  });
+  ));
 
   onCleanup(() => {
     if (timerInterval) {
@@ -104,7 +109,7 @@ export default function AchievementModal() {
           </div>
           <div class="season-countdown">
             <span class="countdown-label">赛季结束倒计时：</span>
-            <span class="countdown-value">{formatCountdown(countdown)}</span>
+            <span class="countdown-value">{formatCountdown(countdown())}</span>
           </div>
         </div>
         <div class="modal-body">

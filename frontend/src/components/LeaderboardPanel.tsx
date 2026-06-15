@@ -1,4 +1,4 @@
-import { createSignal, For, createEffect, onMount } from 'solid-js';
+import { createSignal, For, createEffect, on } from 'solid-js';
 import { useGameContext } from '../store/game.store';
 import type { LeaderboardEntry, LeaderboardType, LeaderboardScope } from '../types/game.types';
 
@@ -21,6 +21,26 @@ export default function LeaderboardPanel() {
 
   const handleScopeChange = (scope: LeaderboardScope) => {
     store.setLeaderboardScope(scope);
+  };
+
+  const hasData = (): boolean => {
+    const scope = store.leaderboardScope;
+    switch (activeTab()) {
+      case 'kills':
+        return scope === 'season' 
+          ? store.seasonLeaderboardKills.length > 0 
+          : store.leaderboardKills.length > 0;
+      case 'waves':
+        return scope === 'season' 
+          ? store.seasonLeaderboardWaves.length > 0 
+          : store.leaderboardWaves.length > 0;
+      case 'wins':
+        return scope === 'season' 
+          ? store.seasonLeaderboardWins.length > 0 
+          : store.leaderboardWins.length > 0;
+      default:
+        return false;
+    }
   };
 
   const getEntries = (): LeaderboardEntry[] => {
@@ -66,15 +86,12 @@ export default function LeaderboardPanel() {
     setActiveTab(tab);
   };
 
-  onMount(() => {
-    store.fetchLeaderboard('kills', 'season');
-    store.fetchLeaderboard('kills', 'alltime');
-  });
-
-  createEffect(() => {
-    store.fetchLeaderboard(activeTab(), 'season');
-    store.fetchLeaderboard(activeTab(), 'alltime');
-  });
+  createEffect(on(
+    [() => activeTab(), () => store.leaderboardScope],
+    ([tab, scope]) => {
+      store.fetchLeaderboard(tab, scope as LeaderboardScope);
+    }
+  ));
 
   return (
     <div class="leaderboard-panel">
@@ -119,7 +136,7 @@ export default function LeaderboardPanel() {
             </div>
           )}
         </For>
-        {getEntries().length === 0 && (
+        {!hasData() && (
           <div class="leaderboard-empty">
             暂无排行数据
           </div>

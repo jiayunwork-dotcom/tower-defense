@@ -30,8 +30,6 @@ export class LeaderboardService {
     await this.redisService.zincrby(seasonKey, kills, playerId);
     await this.redisService.zincrby(alltimeKey, kills, playerId);
     await this.achievementService.savePlayerName(playerId, playerName);
-    await this.updateBestRank(playerId, 'kills', 'season');
-    await this.updateBestRank(playerId, 'kills', 'alltime');
   }
 
   async updateWaveRecord(playerId: string, playerName: string, wave: number): Promise<void> {
@@ -43,8 +41,6 @@ export class LeaderboardService {
       }
     }
     await this.achievementService.savePlayerName(playerId, playerName);
-    await this.updateBestRank(playerId, 'waves', 'season');
-    await this.updateBestRank(playerId, 'waves', 'alltime');
   }
 
   async addWin(playerId: string, playerName: string): Promise<void> {
@@ -53,8 +49,6 @@ export class LeaderboardService {
     await this.redisService.zincrby(seasonKey, 1, playerId);
     await this.redisService.zincrby(alltimeKey, 1, playerId);
     await this.achievementService.savePlayerName(playerId, playerName);
-    await this.updateBestRank(playerId, 'wins', 'season');
-    await this.updateBestRank(playerId, 'wins', 'alltime');
   }
 
   private async updateBestRank(playerId: string, type: LeaderboardType, scope: LeaderboardScope): Promise<void> {
@@ -91,6 +85,7 @@ export class LeaderboardService {
 
       if (currentPlayerId && entry.member === currentPlayerId) {
         trend = await this.getTrend(entry.member, type, scope, rank);
+        await this.updateBestRank(entry.member, type, scope);
       }
 
       entries.push({

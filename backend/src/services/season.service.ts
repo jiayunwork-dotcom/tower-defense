@@ -6,6 +6,7 @@ import {
   SEASON_DURATION_SECONDS,
   ACHIEVEMENT_REDIS_KEY_PREFIX,
   ACHIEVEMENTS,
+  PLAYER_BEST_RANK_KEY_PREFIX,
 } from '../constants/achievements.constants';
 
 @Injectable()
@@ -107,6 +108,10 @@ export class SeasonService implements OnModuleInit {
   private async resetSeasonLeaderboards(): Promise<void> {
     const seasonKeys = await this.scanKeys('td:leaderboard:season:*');
     for (const key of seasonKeys) {
+      await this.redisService.del(key);
+    }
+    const seasonBestRankKeys = await this.scanKeys(`${PLAYER_BEST_RANK_KEY_PREFIX}season:*`);
+    for (const key of seasonBestRankKeys) {
       await this.redisService.del(key);
     }
   }
