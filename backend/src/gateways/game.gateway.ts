@@ -13,7 +13,8 @@ import { GameEngineService } from '../services/game-engine.service';
 import { ReplayService } from '../services/replay.service';
 import { AchievementService } from '../services/achievement.service';
 import { LeaderboardService } from '../services/leaderboard.service';
-import { TowerType, TargetStrategy, SkillType, LeaderboardType } from '../types/game.types';
+import { SeasonService } from '../services/season.service';
+import { TowerType, TargetStrategy, SkillType, LeaderboardType, LeaderboardScope } from '../types/game.types';
 
 @WebSocketGateway({
   cors: {
@@ -33,7 +34,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private gameEngineService: GameEngineService,
     private replayService: ReplayService,
     private achievementService: AchievementService,
-    private leaderboardService: LeaderboardService
+    private leaderboardService: LeaderboardService,
+    private seasonService: SeasonService
   ) {}
 
   handleConnection(client: Socket) {
@@ -625,8 +627,19 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket
   ) {
     try {
-      const achievements = await this.achievementService.getAllPlayerAchievements(client.id);
-      return { success: true, achievements };
+      const achievements = await this.achievementService.getAllPlayerAchievementsWithRarity(client.id);
+      const seasonInfo = await this.seasonService.getCurrentSeasonInfo();
+      return { success: true, achievements, seasonInfo };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  @SubscribeMessage('get-season-info')
+  async handleGetSeasonInfo() {
+    try {
+      const seasonInfo = await this.seasonService.getCurrentSeasonInfo();
+      return { success: true, seasonInfo };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
@@ -634,18 +647,24 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('get-leaderboard')
   async handleGetLeaderboard(
-    @MessageBody() data: { type: string; limit?: number }
+    @MessageBody() data: { type: string; scope?: string; limit?: number; playerId?: string }
   ) {
     try {
       if (!data.type) {
         return { success: false, error: 'type is required' };
       }
 
+      const scope: LeaderboardScope = (data.scope === 'season' || data.scope === 'alltime') 
+        ? data.scope 
+        : 'alltime';
+
       const entries = await this.leaderboardService.getLeaderboard(
         data.type as LeaderboardType,
+        scope,
+        data.playerId,
         data.limit || 20
       );
-      return { success: true, entries };
+      return { success: true, entries, scope };
     } catch (err: any) {
       return { success: false, error: err.message };
     }

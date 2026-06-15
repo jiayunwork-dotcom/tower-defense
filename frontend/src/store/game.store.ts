@@ -4,7 +4,8 @@ import { createStore } from 'solid-js/store';
 import type { 
   Game, Room, TowerType, TargetStrategy, SkillType, 
   ChatMessage, ReplaySummary, ReplayData,
-  PlayerAchievementProgress, LeaderboardEntry, AchievementDef
+  PlayerAchievementProgress, LeaderboardEntry, AchievementDef,
+  SeasonInfo, LeaderboardScope
 } from '../types/game.types';
 
 class GameSocket {
@@ -121,9 +122,14 @@ export interface GameStoreState {
   rightReplay: ReplayData | null;
   toastMessage: string | null;
   achievements: PlayerAchievementProgress[];
+  seasonInfo: SeasonInfo | null;
+  leaderboardScope: LeaderboardScope;
   leaderboardKills: LeaderboardEntry[];
   leaderboardWaves: LeaderboardEntry[];
   leaderboardWins: LeaderboardEntry[];
+  seasonLeaderboardKills: LeaderboardEntry[];
+  seasonLeaderboardWaves: LeaderboardEntry[];
+  seasonLeaderboardWins: LeaderboardEntry[];
   achievementNotifications: AchievementDef[];
   showAchievementModal: boolean;
 }
@@ -148,14 +154,20 @@ export interface GameStoreActions {
   showToast: (msg: string) => void;
   clearToast: () => void;
   setAchievements: (achievements: PlayerAchievementProgress[]) => void;
+  setSeasonInfo: (info: SeasonInfo | null) => void;
+  setLeaderboardScope: (scope: LeaderboardScope) => void;
   setLeaderboardKills: (entries: LeaderboardEntry[]) => void;
   setLeaderboardWaves: (entries: LeaderboardEntry[]) => void;
   setLeaderboardWins: (entries: LeaderboardEntry[]) => void;
+  setSeasonLeaderboardKills: (entries: LeaderboardEntry[]) => void;
+  setSeasonLeaderboardWaves: (entries: LeaderboardEntry[]) => void;
+  setSeasonLeaderboardWins: (entries: LeaderboardEntry[]) => void;
   addAchievementNotification: (achievement: AchievementDef) => void;
   removeAchievementNotification: (id: string) => void;
   setShowAchievementModal: (show: boolean) => void;
   fetchAchievements: () => Promise<void>;
-  fetchLeaderboard: (type: string) => Promise<void>;
+  fetchSeasonInfo: () => Promise<void>;
+  fetchLeaderboard: (type: string, scope?: LeaderboardScope) => Promise<void>;
 }
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -177,9 +189,14 @@ const initialState: GameStoreState = {
   rightReplay: null,
   toastMessage: null,
   achievements: [],
+  seasonInfo: null,
+  leaderboardScope: 'alltime',
   leaderboardKills: [],
   leaderboardWaves: [],
   leaderboardWins: [],
+  seasonLeaderboardKills: [],
+  seasonLeaderboardWaves: [],
+  seasonLeaderboardWins: [],
   achievementNotifications: [],
   showAchievementModal: false,
 };
@@ -276,6 +293,14 @@ export function createGameStore(): GameStore {
     setState('achievements', achievements);
   };
 
+  const setSeasonInfo = (info: SeasonInfo | null) => {
+    setState('seasonInfo', info);
+  };
+
+  const setLeaderboardScope = (scope: LeaderboardScope) => {
+    setState('leaderboardScope', scope);
+  };
+
   const setLeaderboardKills = (entries: LeaderboardEntry[]) => {
     setState('leaderboardKills', entries);
   };
@@ -286,6 +311,18 @@ export function createGameStore(): GameStore {
 
   const setLeaderboardWins = (entries: LeaderboardEntry[]) => {
     setState('leaderboardWins', entries);
+  };
+
+  const setSeasonLeaderboardKills = (entries: LeaderboardEntry[]) => {
+    setState('seasonLeaderboardKills', entries);
+  };
+
+  const setSeasonLeaderboardWaves = (entries: LeaderboardEntry[]) => {
+    setState('seasonLeaderboardWaves', entries);
+  };
+
+  const setSeasonLeaderboardWins = (entries: LeaderboardEntry[]) => {
+    setState('seasonLeaderboardWins', entries);
   };
 
   const addAchievementNotification = (achievement: AchievementDef) => {
@@ -304,22 +341,52 @@ export function createGameStore(): GameStore {
     const response = await gameSocket.emit('get-player-achievements', {});
     if (response.success) {
       setAchievements(response.achievements);
+      if (response.seasonInfo) {
+        setSeasonInfo(response.seasonInfo);
+      }
     }
   };
 
-  const fetchLeaderboard = async (type: string) => {
-    const response = await gameSocket.emit('get-leaderboard', { type, limit: 20 });
+  const fetchSeasonInfo = async () => {
+    const response = await gameSocket.emit('get-season-info', {});
     if (response.success) {
-      switch (type) {
-        case 'kills':
-          setLeaderboardKills(response.entries);
-          break;
-        case 'waves':
-          setLeaderboardWaves(response.entries);
-          break;
-        case 'wins':
-          setLeaderboardWins(response.entries);
-          break;
+      setSeasonInfo(response.seasonInfo);
+    }
+  };
+
+  const fetchLeaderboard = async (type: string, scope?: LeaderboardScope) => {
+    const actualScope = scope || state.leaderboardScope;
+    const response = await gameSocket.emit('get-leaderboard', { 
+      type, 
+      scope: actualScope, 
+      limit: 20,
+      playerId: state.playerId
+    });
+    if (response.success) {
+      if (response.scope === 'season') {
+        switch (type) {
+          case 'kills':
+            setSeasonLeaderboardKills(response.entries);
+            break;
+          case 'waves':
+            setSeasonLeaderboardWaves(response.entries);
+            break;
+          case 'wins':
+            setSeasonLeaderboardWins(response.entries);
+            break;
+        }
+      } else {
+        switch (type) {
+          case 'kills':
+            setLeaderboardKills(response.entries);
+            break;
+          case 'waves':
+            setLeaderboardWaves(response.entries);
+            break;
+          case 'wins':
+            setLeaderboardWins(response.entries);
+            break;
+        }
       }
     }
   };
@@ -341,9 +408,14 @@ export function createGameStore(): GameStore {
     get rightReplay() { return state.rightReplay; },
     get toastMessage() { return state.toastMessage; },
     get achievements() { return state.achievements; },
+    get seasonInfo() { return state.seasonInfo; },
+    get leaderboardScope() { return state.leaderboardScope; },
     get leaderboardKills() { return state.leaderboardKills; },
     get leaderboardWaves() { return state.leaderboardWaves; },
     get leaderboardWins() { return state.leaderboardWins; },
+    get seasonLeaderboardKills() { return state.seasonLeaderboardKills; },
+    get seasonLeaderboardWaves() { return state.seasonLeaderboardWaves; },
+    get seasonLeaderboardWins() { return state.seasonLeaderboardWins; },
     get achievementNotifications() { return state.achievementNotifications; },
     get showAchievementModal() { return state.showAchievementModal; },
     setRoom,
@@ -365,13 +437,19 @@ export function createGameStore(): GameStore {
     showToast,
     clearToast,
     setAchievements,
+    setSeasonInfo,
+    setLeaderboardScope,
     setLeaderboardKills,
     setLeaderboardWaves,
     setLeaderboardWins,
+    setSeasonLeaderboardKills,
+    setSeasonLeaderboardWaves,
+    setSeasonLeaderboardWins,
     addAchievementNotification,
     removeAchievementNotification,
     setShowAchievementModal,
     fetchAchievements,
+    fetchSeasonInfo,
     fetchLeaderboard,
     _state: state
   } as GameStore;

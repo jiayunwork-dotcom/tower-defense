@@ -1,6 +1,6 @@
-import { For, createEffect } from 'solid-js';
+import { For, createEffect, createSignal, onCleanup } from 'solid-js';
 import { useGameContext } from '../store/game.store';
-import type { PlayerAchievementProgress, AchievementDef } from '../types/game.types';
+import type { PlayerAchievementProgress, AchievementDef, AchievementRarity } from '../types/game.types';
 
 const ACHIEVEMENT_DEFS: AchievementDef[] = [
   { id: 'kill_100', name: '初露锋芒', description: '累计击杀100只怪物', icon: '⚔️', category: 'kill', threshold: 100, isPerSession: false },
@@ -17,8 +17,25 @@ const ACHIEVEMENT_DEFS: AchievementDef[] = [
   { id: 'economy_10000', name: '富可敌国', description: '单局累计花费10000金币', icon: '👑', category: 'economy', threshold: 10000, isPerSession: true },
 ];
 
+const RARITY_LABELS: Record<AchievementRarity, string> = {
+  common: '常见',
+  rare: '稀有',
+  epic: '史诗',
+  legendary: '传说',
+};
+
+function formatCountdown(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return `${days}天 ${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
 export default function AchievementModal() {
   const store = useGameContext();
+  const [countdown, setCountdown] = createSignal<number>(0);
+  let timerInterval: number | null = null;
 
   const getProgress = (achievementId: string): PlayerAchievementProgress | null => {
     return store.achievements.find(a => a.id === achievementId) || null;
@@ -40,9 +57,33 @@ export default function AchievementModal() {
     store.setShowAchievementModal(false);
   };
 
+  const tickCountdown = () => {
+    if (store.seasonInfo) {
+      const elapsed = Math.floor((Date.now() - store.seasonInfo.nowTime) / 1000);
+      const remaining = Math.max(0, store.seasonInfo.remainingSeconds - elapsed);
+      setCountdown(remaining);
+      if (remaining === 0) {
+        store.fetchAchievements();
+      }
+    }
+  };
+
   createEffect(() => {
     if (store.showAchievementModal) {
       store.fetchAchievements();
+      tickCountdown();
+      timerInterval = window.setInterval(tickCountdown, 1000);
+    } else {
+      if (timerInterval) {
+        window.clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+  });
+
+  onCleanup(() => {
+    if (timerInterval) {
+      window.clearInterval(timerInterval);
     }
   });
 
@@ -56,6 +97,16 @@ export default function AchievementModal() {
           </div>
           <button class="modal-close" onClick={handleClose}>×</button>
         </div>
+        <div class="season-info-bar">
+          <div class="season-info-left">
+            <span class="season-icon">🏆</span>
+            <span class="season-label">第 <strong>{store.seasonInfo?.seasonNumber ?? '-'}</strong> 赛季</span>
+          </div>
+          <div class="season-countdown">
+            <span class="countdown-label">赛季结束倒计时：</span>
+            <span class="countdown-value">{formatCountdown(countdown)}</span>
+          </div>
+        </div>
         <div class="modal-body">
           <div class="achievement-grid">
             <For each={ACHIEVEMENT_DEFS}>
@@ -64,9 +115,13 @@ export default function AchievementModal() {
                 const unlocked = progress?.unlocked || false;
                 const currentValue = progress?.currentValue || 0;
                 const percent = Math.min(100, Math.floor((currentValue / def.threshold) * 100));
+                const rarity = progress?.rarity || 'common';
 
                 return (
                   <div class={`achievement-card ${unlocked ? 'unlocked' : 'locked'}`}>
+                    <div class={`rarity-tag rarity-${rarity}`}>
+                      {RARITY_LABELS[rarity]}
+                    </div>
                     <div class="achievement-icon">{def.icon}</div>
                     <div class="achievement-name">{def.name}</div>
                     <div class="achievement-desc">{def.description}</div>

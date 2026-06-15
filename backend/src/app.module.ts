@@ -7,6 +7,7 @@ import { RedisService } from './services/redis.service';
 import { ReplayService } from './services/replay.service';
 import { AchievementService } from './services/achievement.service';
 import { LeaderboardService } from './services/leaderboard.service';
+import { SeasonService } from './services/season.service';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { LeaderboardService } from './services/leaderboard.service';
     ReplayService,
     AchievementService,
     LeaderboardService,
+    SeasonService,
   ],
 })
 export class AppModule {}

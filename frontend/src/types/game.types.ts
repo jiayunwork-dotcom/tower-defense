@@ -404,9 +404,31 @@ export interface PlayerAchievementProgress {
 
 export type LeaderboardType = 'kills' | 'waves' | 'wins';
 
+export type LeaderboardScope = 'season' | 'alltime';
+
+export type AchievementRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
 export interface LeaderboardEntry {
   playerId: string;
   playerName: string;
   score: number;
   rank: number;
+  trend?: 'up' | 'down' | 'same';
+}
+
+export interface SeasonInfo {
+  seasonNumber: number;
+  startTime: number;
+  endTime: number;
+  nowTime: number;
+  remainingSeconds: number;
+}
+
+export interface PlayerAchievementProgress {
+  id: string;
+  currentValue: number;
+  unlocked: boolean;
+  unlockedAt?: number;
+  rarity?: AchievementRarity;
+  rarityPercent?: number;
 }

@@ -4,12 +4,17 @@ import {
   AchievementDef,
   PlayerAchievementProgress,
   PlayerGameSessionStats,
+  PlayerAchievementWithRarity,
+  AchievementRarity,
 } from '../types/game.types';
 import {
   ACHIEVEMENTS,
   ACHIEVEMENT_MAP,
   ACHIEVEMENT_REDIS_KEY_PREFIX,
   PLAYER_NAME_KEY_PREFIX,
+  ACHIEVEMENT_UNLOCKED_COUNT_KEY,
+  TOTAL_PLAYERS_KEY,
+  computeRarity,
 } from '../constants/achievements.constants';
 
 @Injectable()
@@ -24,8 +29,13 @@ export class AchievementService {
     return `${PLAYER_NAME_KEY_PREFIX}${playerId}`;
   }
 
+  private getAchievementUnlockedCountKey(achievementId: string): string {
+    return `${ACHIEVEMENT_UNLOCKED_COUNT_KEY}:${achievementId}`;
+  }
+
   async savePlayerName(playerId: string, playerName: string): Promise<void> {
     await this.redisService.set(this.getPlayerNameKey(playerId), playerName);
+    await this.redisService.sadd(TOTAL_PLAYERS_KEY, playerId);
   }
 
   async getPlayerName(playerId: string): Promise<string | null> {
@@ -61,6 +71,43 @@ export class AchievementService {
         unlocked: false,
       };
     });
+  }
+
+  async getAllPlayerAchievementsWithRarity(
+    playerId: string
+  ): Promise<PlayerAchievementWithRarity[]> {
+    const progressList = await this.getAllPlayerAchievements(playerId);
+    const totalPlayers = await this.getTotalPlayersCount();
+
+    const results: PlayerAchievementWithRarity[] = [];
+    for (const progress of progressList) {
+      const unlockedCount = await this.getAchievementUnlockedCount(progress.id);
+      const percent = totalPlayers > 0 ? (unlockedCount / totalPlayers) * 100 : 0;
+      const rarity = computeRarity(percent);
+
+      results.push({
+        ...progress,
+        rarity,
+        rarityPercent: percent,
+      });
+    }
+    return results;
+  }
+
+  private async getTotalPlayersCount(): Promise<number> {
+    const members = await this.redisService.smembers(TOTAL_PLAYERS_KEY);
+    return members.length;
+  }
+
+  private async getAchievementUnlockedCount(achievementId: string): Promise<number> {
+    const countStr = await this.redisService.get(this.getAchievementUnlockedCountKey(achievementId));
+    return countStr ? parseInt(countStr, 10) : 0;
+  }
+
+  private async incrementAchievementUnlockedCount(achievementId: string): Promise<void> {
+    const key = this.getAchievementUnlockedCountKey(achievementId);
+    const current = await this.getAchievementUnlockedCount(achievementId);
+    await this.redisService.set(key, String(current + 1));
   }
 
   async getPlayerAchievement(playerId: string, achievementId: string): Promise<PlayerAchievementProgress | null> {
@@ -121,6 +168,7 @@ export class AchievementService {
             unlockedAt: progress.unlockedAt,
           })
         );
+        await this.incrementAchievementUnlockedCount(def.id);
       }
     }
 
@@ -267,6 +315,7 @@ export class AchievementService {
         unlockedAt: Date.now(),
       })
     );
+    await this.incrementAchievementUnlockedCount(achievementId);
 
     return true;
   }

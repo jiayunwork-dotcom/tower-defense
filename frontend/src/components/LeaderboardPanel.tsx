@@ -1,6 +1,6 @@
 import { createSignal, For, createEffect, onMount } from 'solid-js';
 import { useGameContext } from '../store/game.store';
-import type { LeaderboardEntry, LeaderboardType } from '../types/game.types';
+import type { LeaderboardEntry, LeaderboardType, LeaderboardScope } from '../types/game.types';
 
 type TabType = 'kills' | 'waves' | 'wins';
 
@@ -14,14 +14,24 @@ export default function LeaderboardPanel() {
     wins: '胜场榜',
   };
 
+  const scopeLabels: Record<LeaderboardScope, string> = {
+    season: '本赛季',
+    alltime: '历史总榜',
+  };
+
+  const handleScopeChange = (scope: LeaderboardScope) => {
+    store.setLeaderboardScope(scope);
+  };
+
   const getEntries = (): LeaderboardEntry[] => {
+    const scope = store.leaderboardScope;
     switch (activeTab()) {
       case 'kills':
-        return store.leaderboardKills;
+        return scope === 'season' ? store.seasonLeaderboardKills : store.leaderboardKills;
       case 'waves':
-        return store.leaderboardWaves;
+        return scope === 'season' ? store.seasonLeaderboardWaves : store.leaderboardWaves;
       case 'wins':
-        return store.leaderboardWins;
+        return scope === 'season' ? store.seasonLeaderboardWins : store.leaderboardWins;
       default:
         return [];
     }
@@ -44,20 +54,40 @@ export default function LeaderboardPanel() {
     }
   };
 
+  const renderTrend = (trend?: 'up' | 'down' | 'same') => {
+    if (!trend || trend === 'same') return null;
+    if (trend === 'up') {
+      return <span class="trend-arrow trend-up">▲</span>;
+    }
+    return <span class="trend-arrow trend-down">▼</span>;
+  };
+
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
   };
 
   onMount(() => {
-    store.fetchLeaderboard('kills');
+    store.fetchLeaderboard('kills', 'season');
+    store.fetchLeaderboard('kills', 'alltime');
   });
 
   createEffect(() => {
-    store.fetchLeaderboard(activeTab());
+    store.fetchLeaderboard(activeTab(), 'season');
+    store.fetchLeaderboard(activeTab(), 'alltime');
   });
 
   return (
     <div class="leaderboard-panel">
+      <div class="leaderboard-scope-tabs">
+        {(['season', 'alltime'] as LeaderboardScope[]).map(scope => (
+          <button
+            class={`leaderboard-scope-tab ${store.leaderboardScope === scope ? 'active' : ''}`}
+            onClick={() => handleScopeChange(scope)}
+          >
+            {scopeLabels[scope]}
+          </button>
+        ))}
+      </div>
       <div class="leaderboard-tabs">
         {(['kills', 'waves', 'wins'] as TabType[]).map(tab => (
           <button
@@ -70,7 +100,7 @@ export default function LeaderboardPanel() {
       </div>
       <div class="leaderboard-list">
         <For each={getEntries()}>
-          {(entry, index) => (
+          {(entry) => (
             <div 
               class={`leaderboard-item ${isCurrentPlayer(entry.playerId) ? 'current-player' : ''}`}
             >
@@ -82,7 +112,10 @@ export default function LeaderboardPanel() {
                 )}
               </div>
               <div class="leaderboard-name">{entry.playerName}</div>
-              <div class="leaderboard-value">{formatValue(entry.score)}</div>
+              <div class="leaderboard-value">
+                {formatValue(entry.score)}
+                {renderTrend(entry.trend)}
+              </div>
             </div>
           )}
         </For>

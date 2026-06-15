@@ -126,3 +126,19 @@ export const ACHIEVEMENT_REDIS_KEY_PREFIX = 'td:achievement:';
 export const PLAYER_SESSION_STATS_PREFIX = 'td:session:';
 export const LEADERBOARD_KEY_PREFIX = 'td:leaderboard:';
 export const PLAYER_NAME_KEY_PREFIX = 'td:playername:';
+
+export const SEASON_INFO_KEY = 'td:season:info';
+export const SEASON_LEADERBOARD_KEY_PREFIX = 'td:leaderboard:season:';
+export const ALLTIME_LEADERBOARD_KEY_PREFIX = 'td:leaderboard:alltime:';
+export const PLAYER_BEST_RANK_KEY_PREFIX = 'td:bestrank:';
+export const ACHIEVEMENT_UNLOCKED_COUNT_KEY = 'td:achievement:unlocked:count';
+export const TOTAL_PLAYERS_KEY = 'td:players:total';
+
+export const SEASON_DURATION_SECONDS = 7 * 24 * 60 * 60;
+
+export function computeRarity(percent: number): 'common' | 'rare' | 'epic' | 'legendary' {
+  if (percent >= 50) return 'common';
+  if (percent >= 20) return 'rare';
+  if (percent >= 5) return 'epic';
+  return 'legendary';
+}
